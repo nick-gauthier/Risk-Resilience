@@ -1,0 +1,475 @@
+---
+title: "CCSM4 Europe"
+author: "Nick Gauthier"
+date: "September 18, 2015"
+output: html_document
+---
+
+In this notebook, we estimate mid-Holocene monthly mean precipitation and minimum and maximum precipitation in the Mediterranean and southern Europe by statistically downscaling a General Circulation Model (GCM) paleoclimate simulation. We first calibrate a Genralized Additive Model (GAM) using observed WorldClim climatologies, DEM-derived topographic variables, and simulations of present day climates using NCAR's CESM/CCSM4 model. Then we apply this model to CCSM4 simulations of the mid-Holocene PMIP3 experiments.
+ 
+ ##Preparation
+ ###Setup
+ 
+ First load the necessary R packages.
+
+``` {r message= F, warning = F}
+library(raster)     # functions for managing and processing raster data
+library(mgcv)       # functions to fit and analyze GAMs
+library(dismo)      # functions to sample points weighted by latitude
+library(magrittr)   # piping functions for code readability
+library(rasterVis)  # functions for visualizing raster maps
+library(ggplot2)    # functions for plotting
+library(reshape2)
+```
+
+### Observed Climate
+
+Import the observed present-day climatologies which we'll use to calibrate the model. We use WorldClim data at 5min resolution here, which can be easily downloaded using the *getData()* function in the *raster* package. 
+
+```{r, message=F}
+get.wc <- function(var){
+     raster::getData('worldclim', var=var, res = 5, download = T) %>% 
+     crop(extent(-20, 50, 25, 58)) %>%     
+     projectRaster(crs = '+proj=laea') %>%
+     crop(extent(c(-999742, 3770408, 3773858, 5468408))) %>%
+     set_names(month.name)
+}
+
+obs.prc <- get.wc('prec')
+obs.tmx <- get.wc('tmax') %>% divide_by(10) # raw data in degrees Celsius * 10
+obs.tmn <- get.wc('tmin') %>% divide_by(10) 
+```
+
+```{r echo = F}
+levelplot(obs.prc[[c(1, 7)]], par.settings = rasterTheme(region=brewer.pal('Blues', n=9)))
+
+levelplot(brick(c(obs.tmn[[c(1,7)]], obs.tmx[[c(1,7)]])), par.settings = BuRdTheme)
+
+ggplot(melt(values(obs.prc)), aes(x=Var2, y=value, group=Var1)) + 
+     geom_line(alpha = .01) +
+     theme_classic()
+
+ggplot(melt(values(obs.tmx)), aes(x=Var2, y=value, group=Var1)) + 
+     geom_line(alpha = .01) +
+     theme_classic()
+#### do these pots for the predicted va;ues as well!
+```
+
+
+### GCM Predictors
+```{r}
+import.trace <- function(dir, var, sim = 'mh6k', level = 1){
+     gcm.in <- brick(dir, var = var, level = level) 
+     
+     if(sim == 'control'){gcm.in <- gcm.in[[1200:1799]]}
+     
+     gcm.in <- stackApply(gcm.in, indices = 1:12, fun = mean)
+     extent(gcm.in) <- extent(0, 360, -90, 90)
+     
+     gcm.in %>%    
+     rotate %>%
+     projectRaster(obs.prc) %>%
+     mask(obs.prc)
+}
+
+control.prc <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.20th.track1.1deg.005.cam2.h0.PRECT.185001-200512.nc', 
+                            var = "PRECT", 
+                            sim = 'control') %>% multiply_by(2629743830)
+
+control.t <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.20th.track1.1deg.005.cam2.h0.TREFHT.185001-200512.nc', 
+                            var = "TREFHT", 
+                            sim = 'control') %>% subtract(273.15)
+
+control.tmx <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.20th.track1.1deg.005.cam2.h0.TREFMXAV.185001-200512.nc', 
+                            var = "TREFMXAV", 
+                            sim = 'control') %>% subtract(273.15)
+
+control.tmn <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.20th.track1.1deg.005.cam2.h0.TREFMNAV.185001-200512.nc', 
+                            var = "TREFMNAV", 
+                            sim = 'control') %>% subtract(273.15)
+
+control.psl <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.20th.track1.1deg.005.cam2.h0.PSL.185001-200512.nc', 
+                            var = "PSL", 
+                            sim = 'control') %>% divide_by(1000)
+
+control.rh <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.20th.track1.1deg.005.cam2.h0.RHREFHT.185001-200512.nc', 
+                            var = "RHREFHT", 
+                            sim = 'control')
+
+control.q <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.20th.track1.1deg.005.cam2.h0.QREFHT.185001-200512.nc', 
+                           var = "QREFHT", 
+                           sim = 'control')
+
+control.u <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.20th.track1.1deg.005.cam2.h0.U.185001-200512.nc', 
+                          var = "U", 
+                          sim = 'control',
+                          level = 26)
+
+control.v <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.20th.track1.1deg.005.cam2.h0.V.185001-200512.nc', 
+                          var = "V", 
+                          sim = 'control',
+                          level = 26)
+
+control.z <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.20th.track1.1deg.005.cam2.h0.Z3.185001-200512.nc', 
+                          var = "Z3", 
+                          sim = 'control',
+                          level = 23) # ~850 geopotential
+
+
+#plot(brick(control.prc[[1]], control.psl[[1]], control.q[[1]], control.rh[[1]], control.tmn[[1]], control.tmx[[1]], control.z[[1]]))
+
+#pairs(brick(control.prc[[1]], control.psl[[1]], control.q[[1]], control.rh[[1]], control.tmn[[1]], control.tmx[[1]], control.z[[1]], obs.prc[[1]], obs.tmn[[1]],obs.tmx[[1]]))
+```
+
+### Topographic Predictors
+Generate some topographic predictors from a DEM.
+
+Start with a DEM.
+```{r}
+elev <- raster('alt_5m_bil/alt.bil') %>% projectRaster(obs.prc)
+
+levelplot(elev, par.settings = GrTheme, margin = F)
+```
+
+Calculate the euclidean distance to the ocean, accounting for latitude effects.
+```{r}
+dco <- raster('alt_5m_bil/alt.bil') %>% # import WorldClim 5m dem
+    crop(extent(-20, 50, 25, 58)) %>%  # start with a wider region to get accurate distances
+    reclassify(c(-Inf, Inf, NA, NA, NA, 1)) %>% # reverse NA and non-NA cells
+    distance(doEdge = T) %>% # calculate the distances
+    projectRaster(obs.prc) %>%
+    mask(elev) %>% # mask out ocean cells  
+    divide_by(1000) # convert to km
+
+levelplot(dco, margin = F)
+```
+
+Calculate the distance to the ocean in the direction along incoming air mass paths, a proxy for advective continentality.
+
+```{r}
+dir <- (270 - overlay(control.v,  control.u, fun = atan2) * (180 / pi)) %% 360 # in degrees into which the wind is blowing is 90-, from which is 270 -
+#http://stackoverflow.com/questions/21484558/how-to-calculate-wind-direction-from-u-and-v-wind-components-in-r
+
+streamplot(stack(control.u[[1]], control.v[[1]]), isField = 'dXY')
+streamplot(stack(control.u[[7]], control.v[[7]]), isField = 'dXY')
+
+
+##convert to r-compatible flow direction
+flow.dir <- reclassify(dir, c(-1, 22.5, 64, 
+                  22.5, 67.5, 128, 
+                  67.5, 112.5, 1,
+                  112.5, 157.5, 2,
+                  157.5, 202.5, 4,
+                  202.5, 247.5, 8,
+                  247.5, 292.5, 16,
+                  292.5, 337.5, 32,
+                  337.5, 361, 64))
+```
+
+The following chunk of code calculates ACO, the calculations take a long time (~8 hrs on a macbook) and are not run here. Instead, a preprepared ACO dataset is imported in the next chunk for later analyses. If you need to calculate aco, copy and paste this code into your R console. 
+```{r eval = F}
+indices <- which(!is.na(values(elev)))
+pb <- txtProgressBar(min = 1, max = 12, style = 3) 
+aco <- flow.dir
+for(i in 1:12){
+     direction.map <- flow.dir[[i]]
+     test <- mclapply(indices, mc.cores = 8, function(x){
+          flowPath(direction.map, x) %>% length})
+     values(aco[[i]])[indices] <- test %>% unlist
+     setTxtProgressBar(pb, i)
+     }
+close(pb)
+```
+
+```{r}
+aco <- brick('aco') %>% projectRaster(obs.prc)
+levelplot(aco)
+```
+
+Lets think about some more topographic predictors
+one option is sin and cos of the aspect in radians, which gives you an idea of the relative e-w and n-s exposures, respectively
+
+```{r}
+#ew.exposure <- elev %>% terrain(opt='aspect') %>% sin
+#ns.exposure <- elev %>% terrain(opt='aspect') %>% cos
+aspect <- elev %>% terrain(opt='aspect', unit = 'degrees')
+slope <- elev %>% terrain(opt = 'slope', unit = 'degrees')
+```
+
+```{r, eval = F}
+# need to check out that Baopo Fu refernce to confirm this
+
+vel <- sqrt(control.u ^ 2 + control.v ^ 2)
+
+#distance betwwn wind angle and slope orientation
+delta <- abs(dir - aspect)
+values(delta) <- ifelse(values(delta) > 180, 360 - values(delta), values(delta))
+plot(delta[[1]])     
+
+
+vg <- sin(slope * 2 * pi / 180) * cos(delta * pi / 180) * vel * .5
+plot(vg[[1]]*control.prc[[1]])
+```
+Latitude
+
+```{r}
+lat <- elev %>%
+     coordinates %>%
+     extract(,2) %>% 
+     setValues(elev, .)
+
+lon <- elev %>%
+     coordinates %>%
+     extract(,1) %>% 
+     setValues(elev, .)
+```
+
+
+monthly
+```{r}
+month <- obs.tmx %>% setValues(rep(1:12, each = 126555))
+```
+
+Put everything together.
+
+```{r}
+cal.vars <- sapply(1:12, function(x){ 
+  brick(obs.tmx[[x]], obs.tmn[[x]], obs.prc[[x]], control.tmx[[x]], control.tmn[[x]], control.q[[x]], control.rh[[x]], control.prc[[x]], control.psl[[x]], control.z[[x]], elev, dco, vg[[x]],lat,lon, month[[x]]) %>%
+    setNames(c('obs.tmx', 'obs.tmn', 'obs.prc','TREFMXAV', 'TREFMNAV', 'Q', 'RH', 'PRC', 'PSL', 'Z3', 'elev','dco', 'vg', 'lat','lon', 'month'))
+  })
+rm(control.tmx, control.tmn, control.q, control.rh,control.prc,control.psl,control.z, dco,aco,ew.exposure,exposure,aspect,season,lat,lon)
+```
+
+Sample the variables at random points, weighting for area distortions due to latitude
+```{r}
+cal.data <- lapply(cal.vars, function(x) (raster::extract(x, randomPoints(elev, 20000)) %>% data.frame)) %>% do.call(rbind, .)
+
+cal.data$month <- cal.data$month %>% factor()
+
+
+cal.data <- lapply(cal.vars, values) %>% do.call(rbind, .) %>% na.omit %>% data.frame
+
+pairs(cal.data)
+qplot(cal.data$obs.prc,cal.data$PRC, alpha = I(.1))
+# good correlation, lets start with a gam for these two vars and work from there
+```
+
+## Fit the model
+
+let's start with temperature
+```{r}
+
+fit.tmn <- gam(obs.tmn ~ s(TREFMNAV, bs = 'cr') +
+                         s(Z3, bs = 'cr') +
+                         s(elev, bs = 'cr') +
+                         s(dco, bs = 'cr') +
+                         s(month, bs = 're'),
+                method = 'REML', data = cal.data)
+
+
+fit.tmn
+summary(fit.tmn)
+
+#93% deviance explained
+#75% with just temp elev and dco and latlong
+gam.check(fit.tmn)
+#looks good, normal rerrors, overpredicts in top quantile
+
+plot(fit.tmn, shade=T, seWithMean = T, pages = 1)
+
+concurvity(fit.tmn)
+concurvity(fit.tmn,full = F)$observed
+
+library(GGally)
+ggpairs(cal.data, c(5:10), alpha = .1)
+pairs(cal.data[,5:10], pch = '.')
+
+month <- 1
+fit.error <- predict(cal.vars[[month]], fit.tmn, type = 'response') - obs.tmn[[month]]
+levelplot(fit.error,  par.settings = RdBuTheme, at = seq(-10,10, 2), contour = F, margin = F)
+levelplot(brick(predict(cal.vars[[month]], fit.tmn, type = 'response'), obs.tmn[[month]]))
+
+# check for autocorrelatio in the residuals
+Moran(fit.error)
+library(usdm)
+Variogram(fit.error, size = 1000) %>% plot
+# looks quadratic?
+```
+
+```{r}
+fit.tmx <- gam(obs.tmx ~ s(TREFMXAV, bs = 'cr') +
+                         s(Z3, bs = 'cr') +
+                         s(elev, bs = 'cr') +
+                         s(dco, bs = 'cr') +
+                         s(month, bs = 're'),
+                method = 'REML', data = cal.data)
+
+summary(fit.tmx)
+gam.check(fit.tmn)
+plot(fit.tmx, shade = T, seWithMean = T, pages = 1)
+
+fit.tmx.noseason <- gam(obs.tmx ~ s(TREFMXAV, bs = 'cr') +
+                         s(Z3, bs = 'cr') +
+                         s(elev, bs = 'cr') +
+                         s(dco, bs = 'cr'),
+                        method = 'REML', data = cal.data)
+
+fit.tmx.noz <- gam(obs.tmx ~ s(TREFMXAV, bs = 'cr') +
+                         s(elev, bs = 'cr') +
+                         s(dco, bs = 'cr') +
+                         s(month, bs = 're'),
+                method = 'REML', data = cal.data)
+```
+
+```{r}
+fit.prc.occurrence <- gam(factor(obs.prc >= 1) ~ s(PRC),
+                    family = binomial, method = 'REML', data = cal.data)
+#fitting with other vars shrinks everything to zero leaving only prc
+
+summary(fit.prc.occurrence)
+month <- 8
+levelplot(predict(cal.vars[[month]], fit.prc.occurrence, type = 'response'))
+plot(predict(cal.vars[[month]], fit.prc.occurrence, type = 'response') < .6)
+
+fit.prc.occurrence %>% summary
+plot(fit.prc.occurrence, seWithMean = T, shade = T, pages = 1, scale = 0)
+
+fit.prc <- bam(obs.prc ~ s(PRC, bs = 'cr') +
+                         s(PSL, bs = 'cr') +
+                         s(Q, bs = 'cr') + 
+                         s(vg, bs = 'cr') +
+                         s(Z3, bs = 'cr') +
+                         s(elev, bs = 'cr') +
+                         s(dco, bs = 'cr') +
+                         s(month, bs = 're'),
+               family = Gamma(link = 'log'), method = 'REML', data = cal.data[cal.data$obs.prc>=1,])
+
+summary(fit.prc)
+fit.prc
+concurvity(fit.prc)
+gam.check(fit.prc)
+plot(fit.prc, shade = T, seWithMean = T, pages = 1)
+plot(fit.prc, residuals = T)
+
+
+
+month <- 3
+fit.error <- predict(cal.vars[[month]], fit.prc, type = 'response') - obs.prc[[month]]
+levelplot(fit.error,  par.settings = RdBuTheme, at = seq(-175, 175, 25),contour = F, margin = F)
+levelplot(fit.error/obs.prc[[month]] * 100,  par.settings = RdBuTheme, at = seq(-100, 100, 25),contour = F, margin = F)
+
+levelplot(brick(predict(cal.vars[[month]], fit.prc, type = 'response'), obs.prc[[month]]))
+
+```
+
+
+TEST models on out of sample domain
+
+```{r}
+pred.vars <- sapply(1:12, function(x){ 
+  brick(mh6k.tmx[[x]], mh6k.tmn[[x]], mh6k.prc[[x]], mh6k.psl[[x]], mh6k.z[[x]], elev, dco,lat,lon) %>%
+    setNames(c('TREFMXAV', 'TREFMNAV', 'PRC', 'PSL', 'Z3', 'elev','dco', 'lat','lon'))
+  })
+```
+
+
+```{r}
+tmn.recon <- lapply(1:12, function(x){predict(pred.vars[[x]], fit.tmn, type = 'response')}) %>% brick
+tmx.recon <- lapply(1:12, function(x){predict(pred.vars[[x]], fit.tmx, type = 'response')}) %>% brick
+prc.occurrence.recon <- lapply(1:12, function(x){predict(pred.vars[[x]], fit.prc.occurrence, type = 'response')}) %>% brick
+prc.recon <- lapply(1:12, function(x){predict(pred.vars[[x]], fit.prc, type = 'response')}) %>% brick
+prc.recon <- mask(prc.recon, prc.occurrence.recon>.7, maskvalue=0, update.value=0)
+
+
+levelplot(prc.occurrence.recon)
+levelplot(prc.recon - obs.prc, par.settings = RdBuTheme, at = seq(-200,200,20))
+levelplot(tmn.recon - obs.tmn, par.settings = BuRdTheme, at = seq(-15,15,2))
+levelplot(tmx.recon - obs.tmx, par.settings = BuRdTheme, at = seq(-20,20,2))
+
+writeRaster(tmn.recon, 'tmn_mh6k.tif', format = 'GTiff', options="INTERLEAVE=BAND", overwrite = T)
+writeRaster(tmx.recon, 'tmx_mh6k.tif', format = 'GTiff', options="INTERLEAVE=BAND", overwrite = T)
+writeRaster(prc.recon, 'prc_mh6k.tif', format = 'GTiff', options="INTERLEAVE=BAND", overwrite = T)
+
+```
+
+ 
+```{r}
+mh6k.tmx <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.mh6ka.1deg.003.cam2.h0.TREFMXAV.080101-131612.nc', 
+                         var = "TREFMXAV") %>% subtract(273.15)
+
+mh6k.tmn <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.mh6ka.1deg.003.cam2.h0.TREFMNAV.080101-131612.nc', 
+                         var = "TREFMNAV") %>% subtract(273.15)
+
+mh6k.z <- import.trace('/Volumes/Time Machine Backups/b40.mh6ka.1deg.003.cam2.h0.Z3.080101-131612.nc', 
+                         var = "Z3", level = 23)
+
+mh6k.psl <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.mh6ka.1deg.003.cam2.h0.PSL.080101-131612.nc', 
+                         var = "PSL") %>% divide_by(1000)
+
+mh6k.prc <- import.trace('~/Google Drive/Climate Data/Models/CCSM4/b40.mh6ka.1deg.003.cam2.h0.PRECT.080101-131612.nc', 
+                         var = "PRECT") %>% multiply_by(2629743830)
+
+mh6k.q <- import.trace('~/Google Drive/b40.mh6ka.1deg.003.cam2.h0.QREFHT.080101-131612.nc', 
+                           var = "QREFHT")
+
+mh6k.u <- import.trace('/Volumes/Time Machine Backups/b40.mh6ka.1deg.003.cam2.h0.U.080101-131612.nc', 
+                          var = "U",
+                          level = 26)
+
+mh6k.v <- import.trace('/Volumes/Time Machine Backups/b40.mh6ka.1deg.003.cam2.h0.V.080101-131612.nc', 
+                          var = "V",
+                          level = 26)
+
+mh6k.fsds <- import.trace('~/Downloads/b40.mh6ka.1deg.003.cam2.h0.FSDS.080101-131612.nc', var = 'FSDS')
+plot(mh6k.fsds)
+writeRaster(mh6k.fsds, 'fsds_mh6k.tif', format = 'GTiff', options="INTERLEAVE=BAND", overwrite = T)
+
+
+writeRaster(mh6k.z,'mh6kz')
+writeRaster(mh6k.v, 'mh6kv')
+writeRaster(mh6k.u, 'mh6ku')
+
+dir.6k <- (270 - overlay(mh6k.v,  mh6k.u, fun = atan2) * (180 / pi)) %% 360
+vel.6k <- sqrt(mh6k.u ^ 2 + mh6k.v ^ 2)
+
+#distance betwwn wind angle and slope orientation
+delta.6k <- abs(dir.6k - aspect)
+values(delta.6k) <- ifelse(values(delta.6k) > 180, 360 - values(delta.6k), values(delta.6k))
+vg.6k <- sin(slope * 2 * pi / 180) * cos(delta.6k * pi / 180) * vel.6k * .5
+
+pred.vars <- sapply(1:12, function(x){ 
+  brick(mh6k.tmx[[x]], mh6k.tmn[[x]], mh6k.prc[[x]], mh6k.psl[[x]], mh6k.q[[x]], mh6k.z[[x]], elev, dco, vg.6k[[x]], month[[x]]) %>%
+    setNames(c('TREFMXAV', 'TREFMNAV', 'PRC', 'PSL', 'Q','Z3', 'elev','dco', 'vg','month'))
+  })
+```
+
+Rain Days
+```{r}
+
+mh6k.prect.daily <- brick('~/Downloads/b40.mh6ka.1deg.003M.cam2.h1.PRECC.12690101-13001231.nc') + 
+     brick('~/Downloads/b40.mh6ka.1deg.003M.cam2.h1.PRECL.12690101-13001231.nc') %>% 
+     multiply_by(1000 * 60 * 60 * 24)
+
+day.to.month <- c(rep(1,31),rep(2,28),rep(3,31),rep(4,30),rep(5,31),rep(6,30),rep(7,31),rep(8,31),rep(9,30),rep(10,31),rep(11,30),rep(12,31))
+
+for(i in seq(12,372,12)){
+     day.to.month <- c(day.to.month,rep(1+i,31),rep(2+i,28),rep(3+i,31),rep(4+i,30),rep(5+i,31),rep(6+i,30),rep(7+i,31),rep(8+i,31),rep(9+i,30),rep(10+i,31),rep(11+i,30),rep(12+i,31))     
+}
+
+mh6k.wet <- (mh6k.prect.daily > 2) %>%
+     stackApply(indices = day.to.month, fun = sum) %>%
+     stackApply(indices = 1:12, fun = mean)
+     
+extent(mh6k.wet) <- extent(0, 360, -90, 90)
+     
+mh6k.wet <- mh6k.wet %>%    
+     rotate %>%
+     projectRaster(obs.prc) %>%
+     mask(obs.prc)
+
+
+
+levelplot(mh6k.wet)
+writeRaster(mh6k.wet, 'wet_mh6k.tif',format = 'GTiff', options="INTERLEAVE=BAND", overwrite = T)
+```
+
