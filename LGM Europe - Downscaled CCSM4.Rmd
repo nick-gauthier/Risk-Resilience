@@ -1,0 +1,320 @@
+---
+title: "LGM Europe - Downscaled CCSM4"
+author: "Nick Gauthier"
+date: "January 6, 2016"
+output: html_document
+---
+
+In this notebook, we estimate LGM monthly mean precipitation and minimum and maximum precipitation in the western Mediterranean by statistically a downscaling General Circulation Model (GCM) paleoclimate simulation. We first calibrate a Genralized Additive Model (GAM) using observed WorldClim climatologies, DEM-derived topographic variables, and simulations of present day climates using NCAR's CESM/CCSM4 model. Then we apply this model to CCSM4 simulations of the LGM PMIP3 experiments.
+ 
+ ##Preparation
+ ###Setup
+ 
+ First load the necessary R packages.
+
+``` {r message= F, warning = F}
+library(raster)     # functions for managing and processing raster data
+library(mgcv)       # functions to fit and analyze GAMs
+library(dismo)      # functions to sample points weighted by latitude
+library(magrittr)   # piping functions for code readability
+library(rasterVis)  # functions for visualizing raster maps
+library(ggplot2)    # functions for plotting
+library(reshape2)
+```
+
+### Observed Climate
+
+Import the observed present-day climatologies which we'll use to calibrate the model. We use WorldClim data at 5min resolution here, which can be easily downloaded using the *getData()* function in the *raster* package. 
+
+```{r, message=F}
+get.wc <- function(var){
+     raster::getData('worldclim', var=var, res = 5, download = T) %>% 
+     crop(extent(-20, 40, 30, 58)) %>%     
+     set_names(month.name)
+}
+
+obs.prc <- get.wc('prec')
+obs.tmx <- get.wc('tmax') %>% divide_by(10) # raw data in degrees Celsius * 10
+obs.tmn <- get.wc('tmin') %>% divide_by(10) 
+```
+
+```{r echo = F}
+levelplot(obs.prc[[c(1, 7)]], par.settings = rasterTheme(region=brewer.pal('Blues', n=9)))
+
+levelplot(brick(c(obs.tmn[[c(1,7)]], obs.tmx[[c(1,7)]])), par.settings = BuRdTheme)
+
+ggplot(melt(values(obs.prc)), aes(x=Var2, y=value, group=Var1)) + 
+     geom_line(alpha = .01) +
+     theme_classic()
+
+ggplot(melt(values(obs.tmx)), aes(x=Var2, y=value, group=Var1)) + 
+     geom_line(alpha = .01) +
+     theme_classic()
+```
+
+
+### GCM Predictors
+```{r}
+import.gcm <- function(dir, var, sim = 'lgm', level = 1){
+     gcm.in <- brick(dir, var = var, level = level) 
+     
+     if(sim == 'control'){gcm.in <- gcm.in[[1200:1799]]}
+     if(sim == 'lgm'){gcm.in <- gcm.in[[4213:4812]]}
+     
+     gcm.in <- stackApply(gcm.in, indices = 1:12, fun = mean)
+     extent(gcm.in) <- extent(0, 360, -90, 90)
+     
+     gcm.in %>%    
+     rotate %>%
+     projectRaster(obs.prc) %>%
+     mask(obs.prc)
+}
+
+control.prc <- import.gcm('b40.20th.track1.1deg.005.cam2.h0.PRECT.185001-200512.nc', 
+                            var = "PRECT", 
+                            sim = 'control') %>% multiply_by(2629743830)
+
+control.tmx <- import.gcm('b40.20th.track1.1deg.005.cam2.h0.TREFMXAV.185001-200512.nc', 
+                            var = "TREFMXAV", 
+                            sim = 'control') %>% subtract(273.15)
+
+control.tmn <- import.gcm('b40.20th.track1.1deg.005.cam2.h0.TREFMNAV.185001-200512.nc', 
+                            var = "TREFMNAV", 
+                            sim = 'control') %>% subtract(273.15)
+
+control.psl <- import.gcm('b40.20th.track1.1deg.005.cam2.h0.PSL.185001-200512.nc', 
+                            var = "PSL", 
+                            sim = 'control') %>% divide_by(1000)
+
+control.q <- import.gcm('b40.20th.track1.1deg.005.cam2.h0.QREFHT.185001-200512.nc', 
+                           var = "QREFHT", 
+                           sim = 'control')
+
+control.u <- import.gcm('b40.20th.track1.1deg.005.cam2.h0.U.185001-200512.nc', 
+                          var = "U", 
+                          sim = 'control',
+                          level = 26)
+
+control.v <- import.gcm('b40.20th.track1.1deg.005.cam2.h0.V.185001-200512.nc', 
+                          var = "V", 
+                          sim = 'control',
+                          level = 26)
+
+control.z <- import.gcm('b40.20th.track1.1deg.005.cam2.h0.Z3.185001-200512.nc', 
+                          var = "Z3", 
+                          sim = 'control',
+                          level = 23) # ~850 geopotential
+```
+
+### Topographic Predictors
+Generate some topographic predictors from a DEM.
+
+Start with importing a DEM, then calculate aspect and slope maps using the **terrain** function.
+```{r}
+elev <- raster('alt_5m_bil/alt.bil') %>% projectRaster(obs.prc)
+aspect <- elev %>% terrain(opt='aspect', unit = 'degrees')
+slope <- elev %>% terrain(opt = 'slope', unit = 'degrees')
+```
+
+```{r echo = F}
+levelplot(elev, par.settings = GrTheme, margin = F)
+levelplot(slope, par.settings = GrTheme, margin = F)
+levelplot(aspect, par.settings = GrTheme, margin = F)
+```
+
+Calculate the euclidean distance to the ocean, accounting for latitude effects.
+```{r}
+dco <- raster('alt_5m_bil/alt.bil') %>% # import WorldClim 5m dem
+    crop(extent(-20, 45, 30, 65)) %>%  # start with a wider region to get accurate distances
+    reclassify(c(-Inf, Inf, NA, NA, NA, 1)) %>% # reverse NA and non-NA cells
+    distance(doEdge = T) %>% # calculate the distances
+    projectRaster(elev) %>%
+    mask(elev) %>% # mask out ocean cells  
+    divide_by(1000) # convert to km
+```
+
+```{r echo = F}
+levelplot(dco, margin = F)
+```
+
+
+
+```{r}
+streamplot(stack(control.u[[1]], control.v[[1]]), isField = 'dXY')
+streamplot(stack(control.u[[7]], control.v[[7]]), isField = 'dXY')
+
+dir <- (270 - overlay(control.v,  control.u, fun = atan2) * (180 / pi)) %% 360
+vel <- sqrt(control.u ^ 2 + control.v ^ 2)
+
+delta <- abs(dir - aspect) #distance between wind angle and slope orientation
+values(delta) <- ifelse(values(delta) > 180, 360 - values(delta), values(delta))
+vg <- sin(slope * 2 * pi / 180) * cos(delta * pi / 180) * vel * .5
+```
+
+```{r echo=F}
+plot(vg[[1]])
+```
+
+We can expect the model errors to vary by month and by location (i.e. spatially and temporally autocorrelated residuals). Let's include these variables in the model fitting.
+```{r}
+month <- obs.prc %>% setValues(c(as.factor(rep(1:12, each = 241920)))) # each should = ncell(vg)
+
+lat <- elev %>%
+     coordinates %>%
+     extract( ,2) %>% 
+     setValues(elev, .)
+
+lon <- elev %>%
+     coordinates %>%
+     extract( ,1) %>% 
+     setValues(elev, .)
+```
+
+Put everything together.
+```{r}
+cal.vars <- sapply(1:12, function(x){ 
+  brick(obs.tmx[[x]], obs.tmn[[x]], obs.prc[[x]], control.tmx[[x]], 
+    control.tmn[[x]], control.q[[x]], control.prc[[x]], control.psl[[x]], 
+    control.z[[x]], elev, dco, vg[[x]], month[[x]], lat, lon) %>%
+  setNames(c('obs.tmx', 'obs.tmn', 'obs.prc','TREFMXAV', 'TREFMNAV', 'Q', 'PRC', 
+    'PSL', 'Z3', 'elev','dco', 'vg', 'month', 'lat','lon'))
+})
+
+rm(control.tmx, control.tmn, control.q,control.prc,control.psl,control.z,control.v,control.u,vg,dir,vel,delta)
+```
+
+Sample the variables at random points, weighting for area distortions due to latitude
+```{r}
+cal.data <- lapply(cal.vars, function(x) (raster::extract(x, randomPoints(elev, 20000)) %>% data.frame)) %>% 
+  do.call(rbind, .)
+```
+
+## Fit the model
+let's start with temperature
+```{r}
+fit.tmn <- gam(obs.tmn ~ s(TREFMNAV, bs = 'cr') +
+                         s(Z3, bs = 'cr') +
+                         s(elev, bs = 'cr') +
+                         s(dco, bs = 'cr') +
+                         s(month, bs = 're'), 
+               method = 'REML', data = cal.data)
+
+
+fit.tmn
+summary(fit.tmn)
+gam.check(fit.tmn)
+plot(fit.tmn, shade=T, seWithMean = T, pages = 1)
+```
+
+```{r}
+fit.tmx <- gam(obs.tmx ~ s(TREFMXAV, bs = 'cr') +
+                         s(Z3, bs = 'cr') +
+                         s(elev, bs = 'cr') +
+                         s(dco, bs = 'cr') +
+                         s(month, bs = 're'),
+                method = 'REML', data = cal.data)
+
+fit.tmx
+summary(fit.tmx)
+gam.check(fit.tmn)
+plot(fit.tmx, shade = T, seWithMean = T, pages = 1)
+```
+
+```{r}
+fit.prc.occur <- gam(factor(obs.prc >= 1) ~ s(PRC),
+                    family = binomial, method = 'REML', data = cal.data)
+
+summary(fit.prc.occur)
+gam.check(fit.prc.occur)
+plot(fit.prc.occur, seWithMean = T, shade = T, pages = 1)
+```
+
+```{r}
+fit.prc <- bam(obs.prc ~ s(PRC, bs = 'cr') +
+                         s(PSL, bs = 'cr') +
+                         s(Q, bs = 'cr') + 
+                         s(vg, bs = 'cr') +
+                         s(Z3, bs = 'cr') +
+                         s(elev, bs = 'cr') +
+                         s(dco, bs = 'cr') +
+                         s(month, bs = 're'),
+               family = Gamma(link = 'log'), method = 'REML', data = cal.data[cal.data$obs.prc>=1,])
+
+fit.prc
+summary(fit.prc)
+gam.check(fit.prc)
+plot(fit.prc, shade = T, seWithMean = T, pages = 1)
+```
+
+
+# Paleo
+```{r}
+lgm.tmx <- import.gcm('b40.lgm21ka.1deg.003.cam2.h0.TREFMXAV.149901-189912.nc', 
+                         var = "TREFMXAV") %>% subtract(273.15)
+
+lgm.tmn <- import.gcm('b40.lgm21ka.1deg.003.cam2.h0.TREFMNAV.149901-189912.nc', 
+                         var = "TREFMNAV") %>% subtract(273.15)
+
+lgm.q <- import.gcm('b40.lgm21ka.1deg.003.cam2.h0.QREFHT.149901-189912.nc', 
+                           var = "QREFHT")
+
+lgm.psl <- import.gcm('b40.lgm21ka.1deg.003.cam2.h0.PSL.149901-189912.nc', 
+                         var = "PSL") %>% divide_by(1000)
+
+lgm.prcc <- import.gcm('b40.lgm21ka.1deg.003.cam2.h0.PRECC.149901-189912.nc', 
+                         var = "PRECC") %>% multiply_by(2629743830)
+
+lgm.prcl <- import.gcm('b40.lgm21ka.1deg.003.cam2.h0.PRECL.149901-189912.nc', 
+                         var = "PRECL") %>% multiply_by(2629743830)
+
+lgm.prc <- lgm.prcl + lgm.prcc
+
+lgm.u <- import.gcm('b40.lgm21ka.1deg.003.cam2.h0.U.149901-189912.nc', 
+                          var = "U",
+                          level = 26)
+
+lgm.v <- import.gcm('b40.lgm21ka.1deg.003.cam2.h0.V.149901-189912.nc', 
+                          var = "V",
+                          level = 26)
+
+lgm.z <- import.gcm('b40.lgm21ka.1deg.003.cam2.h0.Z3.149901-189912.nc', 
+                         var = "Z3", level = 23)
+
+streamplot(stack(lgm.u[[1]], lgm.v[[1]]), isField = 'dXY')
+streamplot(stack(lgm.u[[7]], lgm.v[[7]]), isField = 'dXY')
+
+lgm.dir <- (270 - overlay(lgm.v,  lgm.u, fun = atan2) * (180 / pi)) %% 360
+lgm.vel <- sqrt(lgm.u ^ 2 + lgm.v ^ 2)
+lgm.delta <- abs(lgm.dir - aspect)
+values(lgm.delta) <- ifelse(values(lgm.delta) > 180, 360 - values(lgm.delta), values(lgm.delta))
+lgm.vg <- sin(slope * 2 * pi / 180) * cos(lgm.delta * pi / 180) * lgm.vel * .5
+
+pred.vars <- sapply(1:12, function(x){ 
+  brick(lgm.tmx[[x]], lgm.tmn[[x]], lgm.prc[[x]], lgm.psl[[x]], lgm.q[[x]], lgm.z[[x]], elev, dco, lgm.vg[[x]], month[[x]]) %>% 
+    crop(extent(-10, 20, 36, 46)) %>%
+    setNames(c('TREFMXAV', 'TREFMNAV', 'PRC', 'PSL', 'Q','Z3', 'elev','dco', 'vg','month'))
+})
+
+rm(lgm.tmn,lgm.tmx,lgm.z,lgm.q,lgm.v,lgm.u,lgm.prcc,lgm.prcl,lgm.vg,lgm.prc,lgm.dir,lgm.psl,lgm.vel,lgm.delta)
+```
+
+```{r}
+tmn.recon <- lapply(1:12, function(x){predict(pred.vars[[x]], fit.tmn, type = 'response')}) %>% brick
+tmx.recon <- lapply(1:12, function(x){predict(pred.vars[[x]], fit.tmx, type = 'response')}) %>% brick
+prc.occur.recon <- lapply(1:12, function(x){predict(pred.vars[[x]], fit.prc.occur, type = 'response')}) %>% brick
+prc.recon <- lapply(1:12, function(x){predict(pred.vars[[x]], fit.prc, type = 'response')}) %>% brick
+prc.recon <- mask(prc.recon, prc.occur.recon>.7, maskvalue=0, update.value=0)
+```
+
+```{r echo = F}
+levelplot(prc.occur.recon)
+levelplot(prc.recon - obs.prc, par.settings = RdBuTheme, at = seq(-300,300,20))
+levelplot(tmn.recon - obs.tmn, par.settings = BuRdTheme, at = seq(-100,100,10))
+levelplot(tmx.recon - obs.tmx, par.settings = BuRdTheme, at = seq(-100,100,10))
+```
+
+```{r eval = F, echo = F}
+writeRaster(tmn.recon, 'tmn_lgm.tif', format = 'GTiff', options="INTERLEAVE=BAND", overwrite = T)
+writeRaster(tmx.recon, 'tmx_lgm.tif', format = 'GTiff', options="INTERLEAVE=BAND", overwrite = T)
+writeRaster(prc.recon, 'prc_lgm.tif', format = 'GTiff', options="INTERLEAVE=BAND", overwrite = T)
+```
