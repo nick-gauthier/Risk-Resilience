@@ -27,8 +27,8 @@ importWC <- function(var){
     set_names(month.name)
 }
 
-obs.tmp <- get.wc('tmean') %>% divide_by(10) # convert from degrees Celsius * 10
-obs.prc <- get.wc('prec')
+obs.tmp <- importWC('tmean') %>% divide_by(10) # convert from degrees Celsius * 10
+obs.prc <- importWC('prec')
 
 
 ###############################################################################
