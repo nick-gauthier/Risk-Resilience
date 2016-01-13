@@ -19,7 +19,6 @@ library(dismo)      # functions to sample points weighted by latitude
 library(magrittr)   # piping functions for code readability
 library(rasterVis)  # functions for visualizing raster maps
 library(ggplot2)    # functions for plotting
-library(reshape2)
 ```
 
 ### Observed Climate
@@ -27,15 +26,15 @@ library(reshape2)
 Import the observed present-day climatologies which we'll use to calibrate the model. We use WorldClim data at 5min resolution here, which can be easily downloaded using the *getData()* function in the *raster* package. 
 
 ```{r, message=F}
-get.wc <- function(var){
+importWC <- function(var){
      raster::getData('worldclim', var=var, res = 5, download = T) %>% 
      crop(extent(-20, 40, 30, 58)) %>%     
      set_names(month.name)
 }
 
-obs.prc <- get.wc('prec')
-obs.tmx <- get.wc('tmax') %>% divide_by(10) # raw data in degrees Celsius * 10
-obs.tmn <- get.wc('tmin') %>% divide_by(10) 
+obs.prc <- importWC('prec')
+obs.tmx <- importWC('tmax') %>% divide_by(10) # raw data in degrees Celsius * 10
+obs.tmn <- importWC('tmin') %>% divide_by(10) 
 ```
 
 ```{r echo = F}
@@ -55,7 +54,7 @@ ggplot(melt(values(obs.tmx)), aes(x=Var2, y=value, group=Var1)) +
 
 ### GCM Predictors
 ```{r}
-import.gcm <- function(dir, var, sim = 'lgm', level = 1){
+importGCM <- function(dir, var, sim = 'lgm', level = 1){
      gcm.in <- brick(dir, var = var, level = level) 
      
      if(sim == 'control'){gcm.in <- gcm.in[[1200:1799]]}
@@ -70,37 +69,37 @@ import.gcm <- function(dir, var, sim = 'lgm', level = 1){
      mask(obs.prc)
 }
 
-control.prc <- import.gcm('GCM/b40.20th.track1.1deg.005.cam2.h0.PRECT.185001-200512.nc', 
+control.prc <- importGCM('GCM/b40.20th.track1.1deg.005.cam2.h0.PRECT.185001-200512.nc', 
                             var = "PRECT", 
                             sim = 'control') %>% multiply_by(2629743830)
 
-control.tmx <- import.gcm('GCM/b40.20th.track1.1deg.005.cam2.h0.TREFMXAV.185001-200512.nc', 
+control.tmx <- importGCM('GCM/b40.20th.track1.1deg.005.cam2.h0.TREFMXAV.185001-200512.nc', 
                             var = "TREFMXAV", 
                             sim = 'control') %>% subtract(273.15)
 
-control.tmn <- import.gcm('GCM/b40.20th.track1.1deg.005.cam2.h0.TREFMNAV.185001-200512.nc', 
+control.tmn <- importGCM('GCM/b40.20th.track1.1deg.005.cam2.h0.TREFMNAV.185001-200512.nc', 
                             var = "TREFMNAV", 
                             sim = 'control') %>% subtract(273.15)
 
-control.psl <- import.gcm('GCM/b40.20th.track1.1deg.005.cam2.h0.PSL.185001-200512.nc', 
+control.psl <- importGCM('GCM/b40.20th.track1.1deg.005.cam2.h0.PSL.185001-200512.nc', 
                             var = "PSL", 
                             sim = 'control') %>% divide_by(1000)
 
-control.q <- import.gcm('GCM/b40.20th.track1.1deg.005.cam2.h0.QREFHT.185001-200512.nc', 
+control.q <- importGCM('GCM/b40.20th.track1.1deg.005.cam2.h0.QREFHT.185001-200512.nc', 
                            var = "QREFHT", 
                            sim = 'control')
 
-control.u <- import.gcm('GCM/b40.20th.track1.1deg.005.cam2.h0.U.185001-200512.nc', 
+control.u <- importGCM('GCM/b40.20th.track1.1deg.005.cam2.h0.U.185001-200512.nc', 
                           var = "U", 
                           sim = 'control',
                           level = 26)
 
-control.v <- import.gcm('GCM/b40.20th.track1.1deg.005.cam2.h0.V.185001-200512.nc', 
+control.v <- importGCM('GCM/b40.20th.track1.1deg.005.cam2.h0.V.185001-200512.nc', 
                           var = "V", 
                           sim = 'control',
                           level = 26)
 
-control.z <- import.gcm('GCM/b40.20th.track1.1deg.005.cam2.h0.Z3.185001-200512.nc', 
+control.z <- importGCM('GCM/b40.20th.track1.1deg.005.cam2.h0.Z3.185001-200512.nc', 
                           var = "Z3", 
                           sim = 'control',
                           level = 23) # ~850 geopotential
@@ -249,35 +248,35 @@ plot(fit.prc, shade = T, seWithMean = T, pages = 1)
 
 # Paleo
 ```{r}
-lgm.tmx <- import.gcm('GCM/b40.lgm21ka.1deg.003.cam2.h0.TREFMXAV.149901-189912.nc', 
+lgm.tmx <- importGCM('GCM/b40.lgm21ka.1deg.003.cam2.h0.TREFMXAV.149901-189912.nc', 
                          var = "TREFMXAV") %>% subtract(273.15)
 
-lgm.tmn <- import.gcm('GCM/b40.lgm21ka.1deg.003.cam2.h0.TREFMNAV.149901-189912.nc', 
+lgm.tmn <- importGCM('GCM/b40.lgm21ka.1deg.003.cam2.h0.TREFMNAV.149901-189912.nc', 
                          var = "TREFMNAV") %>% subtract(273.15)
 
-lgm.q <- import.gcm('GCM/b40.lgm21ka.1deg.003.cam2.h0.QREFHT.149901-189912.nc', 
+lgm.q <- importGCM('GCM/b40.lgm21ka.1deg.003.cam2.h0.QREFHT.149901-189912.nc', 
                            var = "QREFHT")
 
-lgm.psl <- import.gcm('GCM/b40.lgm21ka.1deg.003.cam2.h0.PSL.149901-189912.nc', 
+lgm.psl <- importGCM('GCM/b40.lgm21ka.1deg.003.cam2.h0.PSL.149901-189912.nc', 
                          var = "PSL") %>% divide_by(1000)
 
-lgm.prcc <- import.gcm('GCM/b40.lgm21ka.1deg.003.cam2.h0.PRECC.149901-189912.nc', 
+lgm.prcc <- importGCM('GCM/b40.lgm21ka.1deg.003.cam2.h0.PRECC.149901-189912.nc', 
                          var = "PRECC") %>% multiply_by(2629743830)
 
-lgm.prcl <- import.gcm('GCM/b40.lgm21ka.1deg.003.cam2.h0.PRECL.149901-189912.nc', 
+lgm.prcl <- importGCM('GCM/b40.lgm21ka.1deg.003.cam2.h0.PRECL.149901-189912.nc', 
                          var = "PRECL") %>% multiply_by(2629743830)
 
 lgm.prc <- lgm.prcl + lgm.prcc
 
-lgm.u <- import.gcm('GCM/b40.lgm21ka.1deg.003.cam2.h0.U.149901-189912.nc', 
+lgm.u <- importGCM('GCM/b40.lgm21ka.1deg.003.cam2.h0.U.149901-189912.nc', 
                           var = "U",
                           level = 26)
 
-lgm.v <- import.gcm('GCM/b40.lgm21ka.1deg.003.cam2.h0.V.149901-189912.nc', 
+lgm.v <- importGCM('GCM/b40.lgm21ka.1deg.003.cam2.h0.V.149901-189912.nc', 
                           var = "V",
                           level = 26)
 
-lgm.z <- import.gcm('GCM/b40.lgm21ka.1deg.003.cam2.h0.Z3.149901-189912.nc', 
+lgm.z <- importGCM('GCM/b40.lgm21ka.1deg.003.cam2.h0.Z3.149901-189912.nc', 
                          var = "Z3", level = 23)
 
 streamplot(stack(lgm.u[[1]], lgm.v[[1]]), isField = 'dXY')
