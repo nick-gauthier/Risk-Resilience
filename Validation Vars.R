@@ -1,29 +1,10 @@
-###############################################################################
-#  A script for fitting a GAMM to observed WorldClim data and the outputs of  #
-#  CCSM4 climate models over Europe. Includes code to test model fit.         #
-#  The GAMM models are saved at the end for use in other code.                #
-#                                                                             #
-#  Author: Nicolas Gauthier                                                   #
-###############################################################################
+### To validate the model, run everything but with new extents
 
 
-###############################################################################
-# Load necessary R packages
-
-library(raster)     # functions for managing and processing raster data
-library(mgcv)       # functions to fit and analyze GAMs
-library(dismo)      # functions to sample points weighted by latitude
-library(magrittr)   # piping functions for code readability
-
-
-###############################################################################
-# Import the observed present-day climatologies which we'll use to calibrate the
-# model. We use WorldClim data at 5min resolution here, which can be easily 
-# downloaded using the *getData()* function in the *raster* package. 
 
 importWC <- function(var){
   raster::getData('worldclim', var = var, res = 5, download = T) %>% 
-    crop(extent(-15, 40, 30, 58)) %>%     
+    crop(extent(-125, -70, 30, 58)) %>%     
     set_names(month.name)
 }
 
@@ -60,14 +41,14 @@ hist.z <- importGCM('GCM/b40.20th.track1.1deg.005.cam2.h0.Z3.185001-200512.nc', 
 # Import a DEM and use it to generate topographic predictors: elevation,
 # distance to the ocean, and the intensity of orographic lifting.
 
-elev <- raster('alt_5m_bil/alt.bil') %>% crop(extent(-15, 40, 30, 58)) # import WorldClim 5m dem
+elev <- raster('alt_5m_bil/alt.bil') %>% crop(extent(-125, -70, 30, 58)) # import WorldClim 5m dem
 
 # Calculate diffusive continentality (DCO) or distance to ocean in km.
 dco <- raster('alt_5m_bil/alt.bil') %>% # reimport WorldClim 5m dem
-  crop(extent(-20, 45, 30, 65)) %>%  # start with a wider region to get accurate distances
+  crop(extent(-140, -50, 20, 65)) %>%  # start with a wider region to get accurate distances
   reclassify(c(-Inf, Inf, NA, NA, NA, 1)) %>% # reverse NA and non-NA cells
   distance(doEdge = T) %>% # calculate the distances
-  crop(extent(-15, 40, 30, 58)) %>% # crop to study region
+  crop(extent(-125, -70, 30, 58)) %>% # crop to study region
   mask(elev) %>% # mask out ocean cells  
   divide_by(1000) # convert to km
 
@@ -106,7 +87,7 @@ lon <- elev %>%
 # Put all the predictor and response variables together, month by month, and
 # remove the original files from the workspace.
 
-cal.vars <- sapply(1:12, function(x){ 
+val.vars <- sapply(1:12, function(x){ 
   brick(obs.tmp[[x]], obs.prc[[x]], hist.tmp[[x]], hist.q[[x]], hist.prcc[[x]],
         hist.prcl[[x]], hist.psl[[x]], hist.z[[x]], elev, dco, oro[[x]], 
         month[[x]], lat, lon) %>%
@@ -117,55 +98,4 @@ cal.vars <- sapply(1:12, function(x){
 rm(hist.tmp, hist.q, hist.prcc, hist.prcl, hist.psl, hist.z, hist.v, hist.u, 
    slope, aspect, oro, dir, vel, delta)
 
-# Sample the variables at random points, weighting for latitude
-cal.data <- lapply(cal.vars, function(x) (raster::extract(x, randomPoints(elev, 20000)) %>% data.frame)) %>% 
-  do.call(rbind, .)
-
-write.csv(cal.data, 'cal_data.csv')
-
-###############################################################################
-# Fit the GAM for temperature
-
-fit.tmp <- gam(obs.tmp ~ s(TREFHT, bs = 'cr') +
-                 s(Z3, bs = 'cr') +
-                 s(elev, bs = 'cr') +
-                 s(dco, bs = 'cr'), 
-               method = 'REML', data = cal.data)
-
-
-fit.tmp
-summary(fit.tmp)
-gam.check(fit.tmp)
-plot(fit.tmp, shade=T, seWithMean = T, pages = 1)
-
-
-###############################################################################
-# Fit the GAMs for precipitation occurrence and amount
-
-fit.prc.occur <- bam(factor(obs.prc >= 1) ~ s(PRCC) + 
-                       s(PRCL) + 
-                       s(Z3) + 
-                       s(TREFHT),
-                     family = binomial, method = 'REML', data = cal.data)
-
-summary(fit.prc.occur)
-gam.check(fit.prc.occur)
-plot(fit.prc.occur, seWithMean = T, shade = T, pages = 1)
-levelplot(predict(cal.vars[[7]], fit.prc.occur, type = 'response'))
-levelplot(obs.prc[[7]] < 1)
-
-
-fit.prc <- bam(obs.prc ~ s(PRCC, bs = 'cr') +
-                 s(PRCL, bs = 'cr') +
-                 s(PSL, bs = 'cr') +
-                 s(Q, bs = 'cr') + 
-                 s(oro, bs = 'cr') +
-                 s(Z3, bs = 'cr') +
-                 s(elev, bs = 'cr') +
-                 s(dco, bs = 'cr') +
-                 s(month, bs = 're'),
-               family = Gamma(link = 'log'), method = 'REML', data = cal.data[cal.data$obs.prc >= 1, ])
-
-
-## set up an automatic system to validate outside of calibration domain, but same lat
-# just calculate the RMSE and try to minimize
+save(val.vars, file = "val_vars")

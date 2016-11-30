@@ -5,7 +5,7 @@ date: "September 18, 2015"
 output: html_document
 ---
 
-In this notebook, we estimate mid-Holocene monthly mean precipitation and minimum and maximum precipitation in the Mediterranean and southern Europe by statistically downscaling General Circulation Model (GCM) paleoclimate simulation. We first calibrate a Genralized Additive Model (GAM) using observed WorldClim climatologies, DEM-derived topographic variables, and simulations of present day climates using NCAR's CESM/CCSM4 model. Then we apply this model to CCSM4 simulations of the mid-Holocene PMIP3 experiments.
+In this notebook, we estimate mid-Holocene monthly mean precipitation and minimum and maximum precipitation in the Mediterranean and southern Europe by statistically downscaling a General Circulation Model (GCM) paleoclimate simulation. We first calibrate a Genralized Additive Model (GAM) using observed WorldClim climatologies, DEM-derived topographic variables, and simulations of present day climates using NCAR's CESM/CCSM4 model. Then we apply this model to CCSM4 simulations of the mid-Holocene PMIP3 experiments.
  
  ##Preparation
  ###Setup
