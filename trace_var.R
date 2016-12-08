@@ -9,15 +9,15 @@ library(ggplot2) # plotting
 
 ### Import TraCE data and extract values at three locations
 
-trace.prc <- brick('~/Desktop/Trace Variability/trace.01-36.22000BP.cam2.PRECT.22000BP_decavg_400BCE.nc') %>%
-  raster::extract(matrix(c(1,40, 4,42, 14,46), ncol = 2)) %>% # extract values at these coordinates
+trace.prc <- brick('trace.01-36.22000BP.cam2.PRECT.22000BP_decavg_400BCE.nc') %>%
+  raster::extract(matrix(c(1,40, 4,42, 14,46), ncol = 2, byrow = T)) %>% # extract values at these coordinates
   t %>% # transpose
   extract(1:1600,) %>% # get the values up to 6ka
   multiply_by(3.154e+10) %>% # convert to mm/year
   set_colnames(c("Southwest", "North Central", "Northeast"))
 
-trace.tmp <- brick('~/Desktop/Trace Variability/trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
-  raster::extract(matrix(c(1,40, 4,42, 14,46), ncol = 2)) %>% t %>%
+trace.tmp <- brick('trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
+  raster::extract(matrix(c(1,40, 4,42, 14,46), ncol = 2, byrow = T)) %>% t %>%
   extract(1:1600,) %>%
   subtract(273.15) %>% # convert from kelvin to C
   set_colnames(c("Southwest", "North Central", "Northeast"))
@@ -28,8 +28,8 @@ trace.tmp <- brick('~/Desktop/Trace Variability/trace.01-36.22000BP.cam2.TREFHT.
 var.dat <- cbind(trace.prc, trace.tmp)
 
 # subset data frame by time period
-lgm <- var.dat[1:400,] # LGM
-ltgl <- var.dat[401:800,] # Late Glacial
+lgm <- var.dat[1:300,] # LGM
+ltgl <- var.dat[301:800,] # Late Glacial
 trns <- var.dat[801:1200,] # Transition
 ehol <- var.dat[1201:1600,] # Early Holocene
 
@@ -52,6 +52,15 @@ detrend.var(trns)
 detrend.var(ehol)
 
 
+#now try doing the arima lines for the whole time span
+ar <- auto.arima(var.dat[,1], seasonal = F)
+
+  for(i in 1:6){
+    ar <- auto.arima(x[,i], seasonal = F)
+    ar$residuals %>% var %>% print
+  }
+
+
 ###  Plot the the time series
 dat <- data.frame(Year = trace.tmp %>% melt %>% extract(,1) %>%
                     as.character %>% strsplit(split="X.") %>% # remove 'x' from year names
@@ -66,7 +75,7 @@ dat <- data.frame(Year = trace.tmp %>% melt %>% extract(,1) %>%
 
 
 ggplot(data = dat, aes(x = Year, y = value)) +
-  geom_vline(xintercept = c(22, 18,14,10,6), color = 'yellow', lwd = 1.5, alpha = .8) +
+  geom_vline(xintercept = c(22, 19, 14, 10, 6), color = 'yellow', lwd = 1.5, alpha = .8) +
   geom_point(alpha = .8, aes(color = variable)) +
   facet_grid(variable~Region, scales = 'free_y', switch = 'y') +
   geom_smooth(color = "black", alpha = .8) +
@@ -76,4 +85,4 @@ ggplot(data = dat, aes(x = Year, y = value)) +
   theme_grey(base_size = 20) %+replace% theme(strip.background  = element_blank())
 
 #save the output
-ggsave('~/****put path to image here****/TraCE Decadal Mean.png', width = 16.9, height = 8.61)
+ggsave('TraCE Decadal Mean.png', width = 16.9, height = 8.61)
