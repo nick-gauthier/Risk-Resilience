@@ -12,13 +12,13 @@ library(ggplot2) # plotting
 trace.prc <- brick('trace.01-36.22000BP.cam2.PRECT.22000BP_decavg_400BCE.nc') %>%
   raster::extract(matrix(c(1,40, 4,42, 14,46), ncol = 2, byrow = T)) %>% # extract values at these coordinates
   t %>% # transpose
-  extract(1:1600,) %>% # get the values up to 6ka
+  extract(1:1600, ) %>% # get the values up to 6ka
   multiply_by(3.154e+10) %>% # convert to mm/year
   set_colnames(c("Southwest", "North Central", "Northeast"))
 
 trace.tmp <- brick('trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
   raster::extract(matrix(c(1,40, 4,42, 14,46), ncol = 2, byrow = T)) %>% t %>%
-  extract(1:1600,) %>%
+  extract(1:1600, ) %>%
   subtract(273.15) %>% # convert from kelvin to C
   set_colnames(c("Southwest", "North Central", "Northeast"))
 
@@ -86,3 +86,17 @@ ggplot(data = dat, aes(x = Year, y = value)) +
 
 #save the output
 ggsave('TraCE Decadal Mean.png', width = 16.9, height = 8.61)
+
+# black and white
+ggplot(data = dat, aes(x = Year, y = value)) +
+  geom_vline(xintercept = c(22, 19, 14, 10, 6), lty = 2) +
+  geom_point(color = 'grey', alpha = .3) +
+  facet_grid(variable ~ Region, scales = 'free_y', switch = 'y') +
+  geom_smooth(color = "black", alpha = .8) +
+  labs(x = '1,000 Years BP', y = '') +
+  guides(color = "none") +
+  scale_x_reverse(breaks = seq(6,22,4)) +
+  theme_bw(base_size = 20) %+replace% theme(strip.background  = element_blank())
+
+#save the output
+ggsave('TraCE Decadal Mean - BW.png', width = 16.9, height = 8.61)
