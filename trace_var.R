@@ -33,33 +33,25 @@ ltgl <- var.dat[301:800,] # Late Glacial
 trns <- var.dat[801:1200,] # Transition
 ehol <- var.dat[1201:1600,] # Early Holocene
 
-# define a function to detrend each series using an automatic arima fit and then
-# calculate the variances.
 
-#*TO DO* make the outputs more readible, currently just prints out the results
-# en masse in the order p.sw, p.nc, p.ne, t.sw, t.nc, t.ne
-detrend.var <- function(x){
-  for(i in 1:6){
-    ar <- auto.arima(x[,i], seasonal = F)
-    ar$residuals %>% var %>% print
-  }
+#what about emd algorithm?
+library(EMD)
+
+emd.test <- emd(trace.tmp[,1], 1:1600)
+emd.test
+plot(emd.test$residue)
+par(mfrow=c(emd.test$nimf+1, 1), mar=c(2,1,2,1))
+rangeimf <- range(emd.test$imf)
+for(i in 1:emd.test$nimf) {
+  plot(1:1600, emd.test$imf[,i], type="l", xlab="", ylab="", ylim=rangeimf,
+       main=paste(i, "-th IMF", sep="")); abline(h=0)
 }
 
-# apply the function to each time period
-detrend.var(lgm)
-detrend.var(ltgl)
-detrend.var(trns)
-detrend.var(ehol)
-
-
-#now try doing the arima lines for the whole time span
-ar <- auto.arima(var.dat[,1], seasonal = F)
-
-  for(i in 1:6){
-    ar <- auto.arima(x[,i], seasonal = F)
-    ar$residuals %>% var %>% print
-  }
-
+# brute force method
+emd.out <- var.dat
+for(i in 1:6){
+  emd.out[,i] <- emd(var.dat[,i], 1:1600)$residue
+}
 
 ###  Plot the the time series
 dat <- data.frame(Year = trace.tmp %>% melt %>% extract(,1) %>%
@@ -99,4 +91,29 @@ ggplot(data = dat, aes(x = Year, y = value)) +
   theme_bw(base_size = 20) %+replace% theme(strip.background  = element_blank())
 
 #save the output
-ggsave('TraCE Decadal Mean - BW.png', width = 16.9, height = 8.61)
+ggsave('TraCE Decadal Mean - bw.png', width = 16.9, height = 8.61)
+
+# emd lines
+emd.dat <- data.frame(Year = trace.tmp %>% melt %>% extract(,1) %>%
+                    as.character %>% strsplit(split="X.") %>% # remove 'x' from year names
+                    unlist %>%
+                    extract(seq(2,length(.), by=2)) %>%
+                    as.numeric,
+                  Region = trace.tmp %>% melt %>% extract(,2),
+                  'Temperature (°C)' = emd.out[,4:6] %>% melt %>% extract(,3),
+                  'Precipitation (mm)' = emd.out[,1:3] %>% melt %>% extract(,3),
+                  check.names = F) %>%
+  melt(c("Year", 'Region'), c("Temperature (°C)", "Precipitation (mm)"))
+
+ggplot(data = dat, aes(x = Year, y = value)) +
+  geom_vline(xintercept = c(22, 19, 14, 10, 6), lty = 2, color = 'grey40') +
+  geom_point(color = 'grey', alpha = .3) +
+  facet_grid(variable ~ Region, scales = 'free_y', switch = 'y') +
+  geom_line(data = emd.dat, size = 1.2, color = "black", alpha = .8) +
+  labs(x = '1,000 Years BP', y = '') +
+  guides(color = "none") +
+  scale_x_reverse(breaks = seq(6,22,4)) +
+  theme_bw(base_size = 20) %+replace% theme(strip.background  = element_blank())
+
+#save the output
+ggsave('TraCE Decadal Mean - emd.png', width = 16.9, height = 8.61)
