@@ -1,0 +1,63 @@
+---
+title: "Ice Cores"
+author: "Nicolas Gauthier"
+date: "December 8, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Ice Core Analysis
+Load required packages.
+```{r}
+library(tidyverse)
+library(EMD)
+```
+Get ice core data.
+```{r message = F}
+core.dat <- read_csv('icecores_newdates.csv') %>%
+  transmute(years.BP, ngrip =  d18O.NGRIP2.ppt, gisp = d18O.GISP2.ppt) %>%
+  filter(years.BP < 24000 & years.BP >=6000)
+```
+
+Plot it
+```{r}
+core.plot <- gather(core.dat, 'core', 'd18O', 2:3)
+
+ggplot(core.plot, aes(x = years.BP, y = d18O, color = core)) +
+  geom_line(alpha = .54) +
+  geom_smooth() +
+  scale_x_reverse(breaks = seq(6000,22000,4000)) +
+  theme_minimal()
+```
+
+## Detrending
+```{r}
+cores <- core.dat %>% na.omit
+core.emd.plot <- emd(cores$gisp, cores$years.BP)$residue %>% data_frame(d18O = ., years.BP = cores$years.BP)
+```
+
+```{r}
+ggplot(core.plot, aes(x = years.BP, y = d18O)) +
+  geom_line(aes(color = core), alpha = .54) +
+  geom_line(data = core.emd.plot) +
+  scale_x_reverse(breaks = seq(6000,22000,4000)) +
+  theme_minimal()
+```
+
+Next, fit an emd to each period seperately.
+Actually, do a breakpoint analysis.
+Breakpoint analysis
+
+```{r}
+core.emd <- emd(cores$gisp, cores$years.BP)
+par(mfrow=c(core.emd$nimf+1, 1), mar=c(2,1,2,1))
+rangeimf <- range(core.emd$imf)
+for(i in 1:core.emd$nimf) {
+  plot(1:1437, core.emd$imf[,i], type="l", xlab="", ylab="", ylim=rangeimf,
+       main=paste(i, "-th IMF", sep="")); abline(h=0)
+}
+```
+

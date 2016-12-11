@@ -3,7 +3,6 @@
 
 library(raster) # netcdf import and raster processing
 library(magrittr) # pipes for code readability
-library(forecast) # fit arima model
 library(reshape2) # melt data frames
 library(ggplot2) # plotting
 
