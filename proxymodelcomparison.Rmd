@@ -1,19 +1,24 @@
 ---
-title: "West Mediterranean climate during the Last Deglaciation"
+title: "West Mediterranean during the Last Deglaciation"
 author: "Nick Gauthier"
 date: '`r Sys.Date()`'
 output:
   tufte::tufte_html:
-    tufte_features: ["fonts","italics"]
+    keep_md: yes
+    tufte_features:
+    - fonts
+    - italics
   tufte::tufte_handout:
     citation_package: natbib
-    latex_engine: xelatex
-  tufte::tufte_book:
-    citation_package: natbib
-    latex_engine: xelatex
+    highlight: pygments
+    keep_tex: yes
 link-citations: yes
+mainfont: Palatino
+monofont: Bera Mono
+geometry: margin=1in
+sansfont: Helvetica
 subtitle: A proxy -- model intercomparison
-bibliography: skeleton.bib
+fontsize: 11pt
 ---
 
 ```{r setup, include=FALSE}
@@ -31,7 +36,7 @@ We'll be comparing paleoclimate model estimates of temperature and precipitation
 Load all the packages we'll need for this analysis. 
 
 `r margin_note("You'll need to have the netCDF libraries already installed on your system for ncdf4 to work.")`
-```{r message=F}
+```{r libraries, message=F}
 library(ncdf4) # import GCM data
 library(raster) # process GCM data
 library(tidyverse) # data management and plotting
@@ -43,23 +48,25 @@ library(EMD) # calculate trends in the data
 # Climate Model
 
 ## Sample Locations
-```{r echo = F, fig.margin = T, message = F, cache = T, fig.cap = 'Locations of 3 sample points.'}
+```{r map, echo = F, fig.margin = T, message = F, cache = T, fig.cap = 'Locations of 3 sample points.'}
 library(ggmap)
 
-samp.pts <- matrix(c(1, 40, 4, 42, 14, 46), ncol = 2, byrow = T) %>% as_data_frame
-get_map(location = c(left = -10, bottom = 35, right = 20, top = 50), maptype = 'terrain-background', source = 'stamen') %>% 
+samp.pts <- matrix(c(1,40, 4,42, 14,46), ncol = 2, byrow = T) %>% as_data_frame
+
+get_map(location = c(left = -10, bottom = 35, right = 20, top = 50), 
+        maptype = 'terrain-background', source = 'stamen') %>% 
   ggmap + labs(x = 'Longitude', y = 'Latitude') + geom_point(data = samp.pts, aes(x = V1, y = V2), size = 3, color = 'red')
 ```
 
 Create a matrix with the coordinates for the three locations of interest in the west Mediterranean. We'll be focusing on large grid cell averages, so the points do not have to be directly over land.
-```{r}
-samp.pts <- matrix(c(1, 40, 4, 42, 14, 46), ncol = 2, byrow = T)
+```{r samppoints}
+samp.pts <- matrix(c(1,40, 4,42, 14,46), ncol = 2, byrow = T)
 samp.pts
 ```
 
 ## TraCE-21k
 
-```{r, echo=FALSE, fig.cap="TraCE21-k precipitation and temperature", fig.margin=TRUE, message=F, cache=TRUE}
+```{r trace_map, echo=FALSE, fig.show = 'hold', fig.cap = 'TraCE21-k global precipitation and temperature', fig.margin=TRUE, message=F, cache=TRUE}
 library(rasterVis)
 
 brick('trace.01-36.22000BP.cam2.PRECT.22000BP_decavg_400BCE.nc') %>%
@@ -72,34 +79,34 @@ brick('trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
   subtract(273.15)%>%
   levelplot(margin = F, par.settings = BuRdTheme())
 ```
-First, import data from the TraCE-21k paleoclimate simulation. Then extract temperature and precipitation values at three locations in the west Mediterranean. Use the *brick* function from **raster** to import decadal averages from the simulation. Put the coordinates for the three locations in a matrix, and use that matrix to and **raster's** *extract* function to get the values from the climate model brick. Convert the precipitation values to mm/year and temperature values to degrees Celsius. Finally, name the columns for each region appropriately.
 
-```{r}
-trace.prc <- brick('trace.01-36.22000BP.cam2.PRECT.22000BP_decavg_400BCE.nc') %>% # import climate model
-  raster::extract(samp.pts) %>% # extract data at these coordinates
-  multiply_by(3.154e+10) # convert to mm/year
-
-trace.tmp <- brick('trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
-  raster::extract(samp.pts) %>% 
-  subtract(273.15) # convert from kelvin to C
-```
+First, import data from the TraCE-21k paleoclimate simulation. Then extract temperature and precipitation values at three locations in the west Mediterranean. Use the *brick* function from **raster** to import decadal averages from the simulation. Put the coordinates for the three locations in a matrix, and use that matrix to and **raster's** *extract* function to get the values from the climate model brick. Convert the precipitation values to mm/year and temperature values to degrees Celsius. Finally, name the columns for each region appropriately. 
 
 Now pull all the TraCE data into one data frame, with one row per year, and one column per variable/location combination. First *rbind* the two sets of TraCE data and *transpose* the results, turning the 6 rows into 6 columns. Add a column for the Year (in ka BP), and use to select only the entries earlier than 6,000 BP.
+
 ```{r}
-trace.dat <- rbind(trace.tmp, trace.prc) %>%
+trace.dat <- rbind(
+  brick('trace.01-36.22000BP.cam2.PRECT.22000BP_decavg_400BCE.nc') %>%
+    raster::extract(samp.pts) %>% # extract data at these coordinates
+    multiply_by(3.154e+10), # convert to mm/year
+  brick('trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
+    raster::extract(samp.pts) %>% 
+    subtract(273.15)) %>% # convert from kelvin to C
   t %>% # transpose
   as.data.frame %>%
-  set_colnames(c('tmp,Southwest', 'tmp,North Central', 'tmp,Northeast', 'prc,Southwest', 'prc,North Central', 'prc,Northeast')) %>%
+  set_colnames(c('tmp,Southwest', 'tmp,North Central', 'tmp,Northeast', 
+                 'prc,Southwest', 'prc,North Central', 'prc,Northeast')) %>%
   rownames_to_column('Year') %>%
   mutate(Year = as.numeric(substring(Year, 3))) %>%
   filter(Year > 6) # get all the decades up to 6ka BP
 ```
 
+
+
 ## Trend Analysis
 
 Let's use the **EMD** package to calculate actual trend lines using the empirical mode decomposition approach.
-```{r, echo=FALSE, fig.cap="Empirical mode deccomposition", fig.height = 20, fig.margin=TRUE, message=F, cache=TRUE}
-
+```{r, echo=FALSE, fig.cap="Empirical mode decomposition", fig.height = 16, fig.margin=TRUE, message=F, cache=TRUE}
 emd.test <- emd(trace.dat[,2])
 
 par(mfrow=c(emd.test$nimf+1, 1), mar=c(2,1,2,1))
@@ -112,11 +119,12 @@ for(i in 1:emd.test$nimf) {
 
 Now organize the temperature and precipitation data to make plotting easier using functions from **tidyr**.
 `r margin_note("Replace the variable names to make facet naming easier too.")`
-```{r}
+```{r cache = T}
 trace.plot <- trace.dat %>% 
   gather(key, value, - Year) %>%
   separate(key, c('Variable', 'Region'), ',') %>%
-  mutate(Variable = ifelse(Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
+  mutate(Variable = ifelse(
+    Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
 
 emd.res <- function(x) emd(x)$residue
 trace.emd <- trace.dat %>%
@@ -128,30 +136,31 @@ trace.emd <- trace.dat %>%
 ```
 
 Plot everything with **ggplot2**.
-```{r, echo=FALSE, fig.cap="Black and white version", fig.width = 16.9, fig.height = 8.61, fig.margin=TRUE, message=F, cache=TRUE}
+```{r bwplot, echo=FALSE, fig.cap="Black and white version", fig.width = 16.9, fig.height = 8.61, fig.margin=TRUE, message=F, cache=TRUE}
 ggplot(data = trace.plot, aes(x = Year, y = value)) +
   facet_grid(Variable ~ Region, switch = 'y', scale = 'free_y') +
   geom_vline(xintercept = c(22, 19, 14, 10, 6), lty = 2) +
   geom_point(color = 'grey', alpha = .3) +
   geom_line(data = trace.emd, size = 1.2, color = "black", alpha = .8) +
-  labs(x = '1,000 Years BP', y = '') +
   scale_x_reverse(breaks = seq(6,22,4)) +
+  guides(color = "none") +
+  labs(x = '1,000 Years BP', y = '') +
   theme_bw(base_size = 20) +
   theme(strip.background  = element_blank())
 ```
 
-```{r fig.fullwidth = TRUE, fig.width = 16.9, fig.height = 8.61}
+```{r mainplot, fig.fullwidth = TRUE, fig.width = 16.9, fig.height = 8.61}
 ggplot(data = trace.plot, aes(x = Year, y = value)) +
   facet_grid(Variable ~ Region, switch = 'y', scale = 'free_y') +
   geom_vline(xintercept = c(22, 19, 14, 10, 6), lty = 2) +
   geom_point(aes(color = Variable), alpha = .3) +
   geom_line(data = trace.emd, size = 1.2, color = "black", alpha = .8) +
-  labs(x = '1,000 Years BP', y = '') +
   scale_x_reverse(breaks = seq(6,22,4)) +
+  labs(x = '1,000 Years BP', y = '') +
+  guides(color = "none") +
   theme_bw(base_size = 20) +
   theme(strip.background  = element_blank())
 ```
-
 
 
 # Proxy records
@@ -174,9 +183,10 @@ ggplot(core.plot, aes(x = years.BP, y = d18O, color = core)) +
 ```
 
 ## Detrending
-```{r}
+```{r cache = T}
 cores <- core.dat %>% na.omit
-core.emd.plot <- emd(cores$gisp, cores$years.BP)$residue %>% data_frame(d18O = ., years.BP = cores$years.BP)
+core.emd.plot <- emd(cores$gisp, cores$years.BP)$residue %>% 
+  data_frame(d18O = ., years.BP = cores$years.BP)
 ```
 
 ```{r}
