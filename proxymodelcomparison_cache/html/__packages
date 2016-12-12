@@ -21,3 +21,4 @@ RColorBrewer
 latticeExtra
 rasterVis
 ggmap
+rgdal

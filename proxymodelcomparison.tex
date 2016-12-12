@@ -103,7 +103,7 @@
 % title / author / date
 \title{West Mediterranean during the Last Deglaciation}
 \author{Nick Gauthier}
-\date{2016-12-11}
+\date{2016-12-12}
 
 
 \begin{document}
@@ -128,7 +128,9 @@ Load all the packages we'll need for this analysis.
 \begin{Shaded}
 \begin{Highlighting}[]
 \KeywordTok{library}\NormalTok{(ncdf4) }\CommentTok{# import GCM data}
+\KeywordTok{library}\NormalTok{(rgdal) }\CommentTok{# read GCM data}
 \KeywordTok{library}\NormalTok{(raster) }\CommentTok{# process GCM data}
+\KeywordTok{library}\NormalTok{(rasterVis) }\CommentTok{# plotting GCM data}
 \KeywordTok{library}\NormalTok{(tidyverse) }\CommentTok{# data management and plotting}
 \KeywordTok{library}\NormalTok{(magrittr) }\CommentTok{# pipes for code readability}
 \KeywordTok{library}\NormalTok{(EMD) }\CommentTok{# calculate trends in the data}
@@ -149,17 +151,10 @@ averages, so the points do not have to be directly over land.
 
 \begin{Shaded}
 \begin{Highlighting}[]
-\NormalTok{samp.pts <-}\StringTok{ }\KeywordTok{matrix}\NormalTok{(}\KeywordTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{,}\DecValTok{40}\NormalTok{, }\DecValTok{4}\NormalTok{,}\DecValTok{42}\NormalTok{, }\DecValTok{14}\NormalTok{,}\DecValTok{46}\NormalTok{), }\DataTypeTok{ncol =} \DecValTok{2}\NormalTok{, }\DataTypeTok{byrow =} \NormalTok{T)}
-\NormalTok{samp.pts}
+\NormalTok{samp.pts <-}\StringTok{ }\KeywordTok{matrix}\NormalTok{(}\KeywordTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{, }\DecValTok{40}\NormalTok{, }\DecValTok{4}\NormalTok{, }\DecValTok{42}\NormalTok{, }\DecValTok{14}\NormalTok{, }\DecValTok{46}\NormalTok{), }
+                   \DataTypeTok{ncol =} \DecValTok{2}\NormalTok{, }\DataTypeTok{byrow =} \NormalTok{T)}
 \end{Highlighting}
 \end{Shaded}
-
-\begin{verbatim}
-##      [,1] [,2]
-## [1,]    1   40
-## [2,]    4   42
-## [3,]   14   46
-\end{verbatim}
 
 \subsection{TraCE-21k}\label{trace-21k}
 
@@ -233,6 +228,8 @@ easier using functions from \textbf{tidyr}.
 \end{Highlighting}
 \end{Shaded}
 
+\subsection{Plotting}\label{plotting}
+
 Plot everything with \textbf{ggplot2}.
 
 \begin{marginfigure}
@@ -256,6 +253,170 @@ Plot everything with \textbf{ggplot2}.
 
 \begin{figure*}
 \includegraphics{proxymodelcomparison_files/figure-latex/mainplot-1} \end{figure*}
+
+\subsection{Spatial patterns}\label{spatial-patterns}
+
+Now let's import previously-downscaled ensemble equilibrium simulations
+of the Last Glacial Maximum and Mid Holocene, to estimate how the
+spatial patterns of climate variability have changed over time, and to
+test for consistency with the transient TraCE simulation.
+
+First import the downscaled data.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{bbox <-}\StringTok{ }\KeywordTok{extent}\NormalTok{(}\KeywordTok{c}\NormalTok{(-}\DecValTok{10}\NormalTok{, }\DecValTok{20}\NormalTok{, }\DecValTok{35}\NormalTok{, }\DecValTok{47}\NormalTok{))}
+
+\NormalTok{lgm.prc <-}\StringTok{ }\KeywordTok{brick}\NormalTok{(}\StringTok{'Downscaled/ensemble_prc_lgm.tif'}\NormalTok{) %>%}
+\StringTok{  }\KeywordTok{crop}\NormalTok{(bbox)}
+\NormalTok{mh.prc <-}\StringTok{ }\KeywordTok{brick}\NormalTok{(}\StringTok{'Downscaled/ensemble_prc_mh6k.tif'}\NormalTok{) %>%}
+\StringTok{  }\KeywordTok{crop}\NormalTok{(bbox)}
+
+\NormalTok{lgm.tmp <-}\StringTok{ }\KeywordTok{brick}\NormalTok{(}\StringTok{'Downscaled/ensemble_tmn_lgm.tif'}\NormalTok{) %>%}
+\StringTok{  }\KeywordTok{crop}\NormalTok{(bbox) %>%}
+\StringTok{  }\KeywordTok{add}\NormalTok{(}\KeywordTok{brick}\NormalTok{(}\StringTok{'Downscaled/ensemble_tmx_lgm.tif'}\NormalTok{) %>%}\StringTok{ }\KeywordTok{crop}\NormalTok{(bbox)) %>%}
+\StringTok{  }\KeywordTok{divide_by}\NormalTok{(}\DecValTok{2}\NormalTok{)}
+\NormalTok{mh.tmp <-}\StringTok{ }\KeywordTok{brick}\NormalTok{(}\StringTok{'Downscaled/ensemble_tmn_mh6k.tif'}\NormalTok{) %>%}
+\StringTok{  }\KeywordTok{crop}\NormalTok{(bbox) %>%}
+\StringTok{  }\KeywordTok{add}\NormalTok{(}\KeywordTok{brick}\NormalTok{(}\StringTok{'Downscaled/ensemble_tmx_mh6k.tif'}\NormalTok{) %>%}\StringTok{ }\KeywordTok{crop}\NormalTok{(bbox)) %>%}
+\StringTok{  }\KeywordTok{divide_by}\NormalTok{(}\DecValTok{2}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+Calculate changes in seasonal precipitation and temperature.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{bySeason <-}\StringTok{ }\NormalTok{function(x, season, var)\{}
+  \NormalTok{if(season ==}\StringTok{ 'djf'}\NormalTok{) \{ids <-}\StringTok{ }\KeywordTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{,}\DecValTok{2}\NormalTok{,}\DecValTok{12}\NormalTok{)\}}
+  \NormalTok{if(season ==}\StringTok{ 'jja'}\NormalTok{) \{ids <-}\StringTok{ }\KeywordTok{c}\NormalTok{(}\DecValTok{6}\NormalTok{,}\DecValTok{7}\NormalTok{,}\DecValTok{8}\NormalTok{)\}}
+  
+  \NormalTok{if(var ==}\StringTok{ 'tmp'}\NormalTok{) }\KeywordTok{return}\NormalTok{(}\KeywordTok{mean}\NormalTok{(x[[ids]]))}
+  \NormalTok{if(var ==}\StringTok{ 'prc'}\NormalTok{) }\KeywordTok{return}\NormalTok{(}\KeywordTok{sum}\NormalTok{(x[[ids]]))}
+\NormalTok{\}}
+
+\NormalTok{prc.change.map <-}\StringTok{ }\KeywordTok{brick}\NormalTok{(}\KeywordTok{c}\NormalTok{(}
+  \NormalTok{(}\KeywordTok{bySeason}\NormalTok{(mh.prc, }\StringTok{'djf'}\NormalTok{, }\StringTok{'prc'}\NormalTok{) -}\StringTok{ }\KeywordTok{bySeason}\NormalTok{(lgm.prc, }\StringTok{'djf'}\NormalTok{, }\StringTok{'prc'}\NormalTok{)) *}\StringTok{ }\DecValTok{100} \NormalTok{/}\StringTok{ }\KeywordTok{bySeason}\NormalTok{(lgm.prc, }\StringTok{'djf'}\NormalTok{, }\StringTok{'prc'}\NormalTok{),}
+  \NormalTok{(}\KeywordTok{bySeason}\NormalTok{(mh.prc, }\StringTok{'jja'}\NormalTok{, }\StringTok{'prc'}\NormalTok{) -}\StringTok{ }\KeywordTok{bySeason}\NormalTok{(lgm.prc, }\StringTok{'jja'}\NormalTok{, }\StringTok{'prc'}\NormalTok{)) *}\StringTok{ }\DecValTok{100} \NormalTok{/}\StringTok{ }\KeywordTok{bySeason}\NormalTok{(lgm.prc, }\StringTok{'jja'}\NormalTok{, }\StringTok{'prc'}\NormalTok{)))}
+
+\NormalTok{tmp.change.map <-}\StringTok{ }\KeywordTok{brick}\NormalTok{(}\KeywordTok{c}\NormalTok{(}
+  \KeywordTok{bySeason}\NormalTok{(mh.tmp, }\StringTok{'djf'}\NormalTok{, }\StringTok{'tmp'}\NormalTok{) -}\StringTok{ }\KeywordTok{bySeason}\NormalTok{(lgm.tmp, }\StringTok{'djf'}\NormalTok{, }\StringTok{'tmp'}\NormalTok{),}
+  \KeywordTok{bySeason}\NormalTok{(mh.tmp, }\StringTok{'jja'}\NormalTok{, }\StringTok{'tmp'}\NormalTok{) -}\StringTok{ }\KeywordTok{bySeason}\NormalTok{(lgm.tmp, }\StringTok{'jja'}\NormalTok{, }\StringTok{'tmp'}\NormalTok{)))}
+\end{Highlighting}
+\end{Shaded}
+
+Plot the results
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{levelplot}\NormalTok{(prc.change.map, }\DataTypeTok{margin =} \NormalTok{F, }\DataTypeTok{names.attr =} \KeywordTok{c}\NormalTok{(}\StringTok{'Winter'}\NormalTok{, }\StringTok{'Summer'}\NormalTok{),}
+          \DataTypeTok{main =} \StringTok{'Precipitation Change (%)}\CharTok{\textbackslash{}n}\StringTok{ LGM to Mid Holocene'}\NormalTok{,}
+          \DataTypeTok{par.settings =} \KeywordTok{PuOrTheme}\NormalTok{(), }
+          \DataTypeTok{at =} \KeywordTok{seq}\NormalTok{(-}\DecValTok{100}\NormalTok{,}\DecValTok{100}\NormalTok{,}\DecValTok{10}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{proxymodelcomparison_files/figure-latex/unnamed-chunk-6-1}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{levelplot}\NormalTok{(tmp.change.map, }\DataTypeTok{margin =} \NormalTok{F, }\DataTypeTok{names.attr =} \KeywordTok{c}\NormalTok{(}\StringTok{'Winter'}\NormalTok{, }\StringTok{'Summer'}\NormalTok{), }
+          \DataTypeTok{main =} \StringTok{'Temperature Change}\CharTok{\textbackslash{}n}\StringTok{ LGM to Mid Holocene'}\NormalTok{,}
+          \DataTypeTok{par.settings =} \KeywordTok{BuRdTheme}\NormalTok{(),}
+          \DataTypeTok{at =} \KeywordTok{seq}\NormalTok{(-}\DecValTok{20}\NormalTok{,}\DecValTok{20}\NormalTok{,}\DecValTok{2}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{proxymodelcomparison_files/figure-latex/unnamed-chunk-6-2}
+
+Now we can calculate changes in seasonality. For temperature, this is
+just the standard deviation of all 12 monthly averages. For
+precipitation, we will use the coefficient of variation.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{tmp.seasonality <-}\StringTok{ }\KeywordTok{calc}\NormalTok{(mh.tmp, sd) -}\StringTok{ }\KeywordTok{calc}\NormalTok{(lgm.tmp, sd)}
+\NormalTok{prc.seasonality <-}\StringTok{ }\KeywordTok{cv}\NormalTok{(mh.prc) -}\StringTok{ }\KeywordTok{cv}\NormalTok{(lgm.prc)}
+\end{Highlighting}
+\end{Shaded}
+
+Plot the results.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{levelplot}\NormalTok{(tmp.seasonality, }\DataTypeTok{margin =} \NormalTok{F, }
+          \DataTypeTok{main =} \StringTok{'Change in temperature seasonality (SD)}\CharTok{\textbackslash{}n}\StringTok{ LGM to Mid Holocene'}\NormalTok{, }
+          \DataTypeTok{par.settings =} \KeywordTok{BuRdTheme}\NormalTok{(), }
+          \DataTypeTok{at =} \KeywordTok{seq}\NormalTok{(-}\DecValTok{4}\NormalTok{, }\DecValTok{4}\NormalTok{, .}\DecValTok{4}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{proxymodelcomparison_files/figure-latex/unnamed-chunk-8-1}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{levelplot}\NormalTok{(prc.seasonality, }\DataTypeTok{margin =} \NormalTok{F, }
+          \DataTypeTok{main =} \StringTok{'Change in precipitation seasonality (CV)}\CharTok{\textbackslash{}n}\StringTok{ LGM to Mid Holocene'}\NormalTok{, }
+          \DataTypeTok{par.settings =} \KeywordTok{BuRdTheme}\NormalTok{(), }
+          \DataTypeTok{at =} \KeywordTok{seq}\NormalTok{(-}\DecValTok{50}\NormalTok{, }\DecValTok{50}\NormalTok{, }\DecValTok{5}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{proxymodelcomparison_files/figure-latex/unnamed-chunk-8-2}
+
+What about changes in spatial hetergeneity?
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{wts <-}\StringTok{ }\KeywordTok{matrix}\NormalTok{(}\KeywordTok{c}\NormalTok{(}\DecValTok{0}\NormalTok{,}\DecValTok{0}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{0}\NormalTok{,}\DecValTok{0}\NormalTok{,}\DecValTok{0}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{0}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{0}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{0}\NormalTok{,}\DecValTok{0}\NormalTok{,}\DecValTok{0}\NormalTok{,}\DecValTok{1}\NormalTok{,}\DecValTok{0}\NormalTok{,}\DecValTok{0}\NormalTok{), }\DataTypeTok{nrow =} \DecValTok{5}\NormalTok{)}
+
+\NormalTok{tmp.hetero <-}\StringTok{ }\KeywordTok{brick}\NormalTok{(}\KeywordTok{c}\NormalTok{(}
+  \KeywordTok{bySeason}\NormalTok{(mh.tmp, }\StringTok{'djf'}\NormalTok{, }\StringTok{'tmp'}\NormalTok{) %>%}
+\StringTok{    }\KeywordTok{focal}\NormalTok{(}\DataTypeTok{w =} \NormalTok{wts, sd, }\DataTypeTok{na.rm =} \NormalTok{T) %>%}
+\StringTok{    }\KeywordTok{subtract}\NormalTok{(}
+      \KeywordTok{bySeason}\NormalTok{(lgm.tmp, }\StringTok{'djf'}\NormalTok{, }\StringTok{'tmp'}\NormalTok{) %>%}\StringTok{ }
+\StringTok{        }\KeywordTok{focal}\NormalTok{(}\DataTypeTok{w =} \NormalTok{wts, sd, }\DataTypeTok{na.rm =} \NormalTok{T)),}
+  \KeywordTok{bySeason}\NormalTok{(mh.tmp, }\StringTok{'jja'}\NormalTok{, }\StringTok{'tmp'}\NormalTok{) %>%}
+\StringTok{    }\KeywordTok{focal}\NormalTok{(}\DataTypeTok{w =} \NormalTok{wts, sd, }\DataTypeTok{na.rm =} \NormalTok{T) %>%}
+\StringTok{    }\KeywordTok{subtract}\NormalTok{(}
+      \KeywordTok{bySeason}\NormalTok{(lgm.tmp, }\StringTok{'jja'}\NormalTok{, }\StringTok{'tmp'}\NormalTok{) %>%}\StringTok{ }
+\StringTok{        }\KeywordTok{focal}\NormalTok{(}\DataTypeTok{w =} \NormalTok{wts, sd, }\DataTypeTok{na.rm =} \NormalTok{T)))) %>%}
+\StringTok{  }\KeywordTok{mask}\NormalTok{(mh.tmp[[}\DecValTok{1}\NormalTok{]]) }\CommentTok{# clip buffer added by window}
+  
+\KeywordTok{levelplot}\NormalTok{(tmp.hetero, }\DataTypeTok{margin =} \NormalTok{F, }\DataTypeTok{names.attr =} \KeywordTok{c}\NormalTok{(}\StringTok{'Winter'}\NormalTok{, }\StringTok{'Summer'}\NormalTok{), }
+          \DataTypeTok{main =} \StringTok{'Temperature heterogeneity (SD in 25km radius) change}\CharTok{\textbackslash{}n}\StringTok{ LGM to Mid Holocene'}\NormalTok{,}
+          \DataTypeTok{par.settings =} \KeywordTok{BuRdTheme}\NormalTok{(), }\DataTypeTok{at =} \KeywordTok{seq}\NormalTok{(-}\DecValTok{10}\NormalTok{, }\DecValTok{10}\NormalTok{, }\DecValTok{1}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{proxymodelcomparison_files/figure-latex/unnamed-chunk-9-1}
+Same for precipitaiton.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{prc.hetero <-}\StringTok{ }\KeywordTok{brick}\NormalTok{(}\KeywordTok{c}\NormalTok{(}
+  \KeywordTok{bySeason}\NormalTok{(mh.prc, }\StringTok{'djf'}\NormalTok{, }\StringTok{'prc'}\NormalTok{) %>%}
+\StringTok{    }\KeywordTok{focal}\NormalTok{(}\DataTypeTok{w =} \NormalTok{wts, sd, }\DataTypeTok{na.rm =} \NormalTok{T) %>%}
+\StringTok{    }\KeywordTok{subtract}\NormalTok{(}
+      \KeywordTok{bySeason}\NormalTok{(lgm.prc, }\StringTok{'djf'}\NormalTok{, }\StringTok{'prc'}\NormalTok{) %>%}\StringTok{ }
+\StringTok{        }\KeywordTok{focal}\NormalTok{(}\DataTypeTok{w =} \NormalTok{wts, sd, }\DataTypeTok{na.rm =} \NormalTok{T)),}
+  \KeywordTok{bySeason}\NormalTok{(mh.prc, }\StringTok{'jja'}\NormalTok{, }\StringTok{'prc'}\NormalTok{) %>%}
+\StringTok{    }\KeywordTok{focal}\NormalTok{(}\DataTypeTok{w =} \NormalTok{wts, sd, }\DataTypeTok{na.rm =} \NormalTok{T) %>%}
+\StringTok{    }\KeywordTok{subtract}\NormalTok{(}
+      \KeywordTok{bySeason}\NormalTok{(lgm.prc, }\StringTok{'jja'}\NormalTok{, }\StringTok{'prc'}\NormalTok{) %>%}\StringTok{ }
+\StringTok{        }\KeywordTok{focal}\NormalTok{(}\DataTypeTok{w =} \NormalTok{wts, sd, }\DataTypeTok{na.rm =} \NormalTok{T)))) %>%}
+\StringTok{  }\KeywordTok{mask}\NormalTok{(mh.prc[[}\DecValTok{1}\NormalTok{]]) }\CommentTok{# clip buffer added by window}
+  
+  
+\KeywordTok{levelplot}\NormalTok{(prc.hetero, }\DataTypeTok{margin =} \NormalTok{F, }\DataTypeTok{names.attr =} \KeywordTok{c}\NormalTok{(}\StringTok{'Winter'}\NormalTok{, }\StringTok{'Summer'}\NormalTok{), }
+          \DataTypeTok{main =} \StringTok{'Precipitation heterogeneity (SD in 25km radius) change}\CharTok{\textbackslash{}n}\StringTok{ LGM to Mid Holocene'}\NormalTok{,}
+          \DataTypeTok{par.settings =} \KeywordTok{BuRdTheme}\NormalTok{(), }\DataTypeTok{at =} \KeywordTok{seq}\NormalTok{(-}\DecValTok{500}\NormalTok{, }\DecValTok{500}\NormalTok{, }\DecValTok{50}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{proxymodelcomparison_files/figure-latex/unnamed-chunk-10-1}
+
+\marginnote{Compare these with raw gcm outputs to check the added value of SDM}
 
 \section{Proxy records}\label{proxy-records}
 
@@ -302,7 +463,7 @@ Plot it
 ## values (geom_path).
 \end{verbatim}
 
-\includegraphics{proxymodelcomparison_files/figure-latex/unnamed-chunk-5-1}
+\includegraphics{proxymodelcomparison_files/figure-latex/unnamed-chunk-12-1}
 
 \subsection{Detrending}\label{detrending}
 
@@ -329,7 +490,7 @@ Plot it
 ## values (geom_path).
 \end{verbatim}
 
-\includegraphics{proxymodelcomparison_files/figure-latex/unnamed-chunk-7-1}
+\includegraphics{proxymodelcomparison_files/figure-latex/unnamed-chunk-14-1}
 
 
 

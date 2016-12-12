@@ -15,7 +15,9 @@ Load all the packages we'll need for this analysis.
 
 ```r
 library(ncdf4) # import GCM data
+library(rgdal) # read GCM data
 library(raster) # process GCM data
+library(rasterVis) # plotting GCM data
 library(tidyverse) # data management and plotting
 library(magrittr) # pipes for code readability
 library(EMD) # calculate trends in the data
@@ -35,15 +37,8 @@ library(EMD) # calculate trends in the data
 Create a matrix with the coordinates for the three locations of interest in the west Mediterranean. We'll be focusing on large grid cell averages, so the points do not have to be directly over land.
 
 ```r
-samp.pts <- matrix(c(1,40, 4,42, 14,46), ncol = 2, byrow = T)
-samp.pts
-```
-
-```
-##      [,1] [,2]
-## [1,]    1   40
-## [2,]    4   42
-## [3,]   14   46
+samp.pts <- matrix(c(1, 40, 4, 42, 14, 46), 
+                   ncol = 2, byrow = T)
 ```
 
 ## TraCE-21k
@@ -108,6 +103,7 @@ trace.emd <- trace.dat %>%
     Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
 ```
 
+## Plotting
 Plot everything with **ggplot2**.
 <p><span class="marginnote shownote"><!--
 <div class="figure">-->
@@ -135,6 +131,146 @@ ggplot(data = trace.plot, aes(x = Year, y = value)) +
 <p class="caption marginnote shownote"> </p>
 </div>
 
+## Spatial patterns
+
+Now let's import previously-downscaled ensemble equilibrium simulations of the Last Glacial Maximum and Mid Holocene, to estimate how the spatial patterns of climate variability have changed over time, and to test for consistency with the transient TraCE simulation.
+
+First import the downscaled data.
+
+```r
+bbox <- extent(c(-10, 20, 35, 47))
+
+lgm.prc <- brick('Downscaled/ensemble_prc_lgm.tif') %>%
+  crop(bbox)
+mh.prc <- brick('Downscaled/ensemble_prc_mh6k.tif') %>%
+  crop(bbox)
+
+lgm.tmp <- brick('Downscaled/ensemble_tmn_lgm.tif') %>%
+  crop(bbox) %>%
+  add(brick('Downscaled/ensemble_tmx_lgm.tif') %>% crop(bbox)) %>%
+  divide_by(2)
+mh.tmp <- brick('Downscaled/ensemble_tmn_mh6k.tif') %>%
+  crop(bbox) %>%
+  add(brick('Downscaled/ensemble_tmx_mh6k.tif') %>% crop(bbox)) %>%
+  divide_by(2)
+```
+
+Calculate changes in seasonal precipitation and temperature.
+
+```r
+bySeason <- function(x, season, var){
+  if(season == 'djf') {ids <- c(1,2,12)}
+  if(season == 'jja') {ids <- c(6,7,8)}
+  
+  if(var == 'tmp') return(mean(x[[ids]]))
+  if(var == 'prc') return(sum(x[[ids]]))
+}
+
+prc.change.map <- brick(c(
+  (bySeason(mh.prc, 'djf', 'prc') - bySeason(lgm.prc, 'djf', 'prc')) * 100 / bySeason(lgm.prc, 'djf', 'prc'),
+  (bySeason(mh.prc, 'jja', 'prc') - bySeason(lgm.prc, 'jja', 'prc')) * 100 / bySeason(lgm.prc, 'jja', 'prc')))
+
+tmp.change.map <- brick(c(
+  bySeason(mh.tmp, 'djf', 'tmp') - bySeason(lgm.tmp, 'djf', 'tmp'),
+  bySeason(mh.tmp, 'jja', 'tmp') - bySeason(lgm.tmp, 'jja', 'tmp')))
+```
+
+Plot the results
+
+```r
+levelplot(prc.change.map, margin = F, names.attr = c('Winter', 'Summer'),
+          main = 'Precipitation Change (%)\n LGM to Mid Holocene',
+          par.settings = PuOrTheme(), 
+          at = seq(-100,100,10))
+```
+
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-6-1.png"  />
+
+```r
+levelplot(tmp.change.map, margin = F, names.attr = c('Winter', 'Summer'), 
+          main = 'Temperature Change\n LGM to Mid Holocene',
+          par.settings = BuRdTheme(),
+          at = seq(-20,20,2))
+```
+
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-6-2.png"  />
+
+Now we can calculate changes in seasonality. For temperature, this is just the standard deviation of all 12 monthly averages. For precipitation, we will use the coefficient of variation.
+
+```r
+tmp.seasonality <- calc(mh.tmp, sd) - calc(lgm.tmp, sd)
+prc.seasonality <- cv(mh.prc) - cv(lgm.prc)
+```
+Plot the results.
+
+```r
+levelplot(tmp.seasonality, margin = F, 
+          main = 'Change in temperature seasonality (SD)\n LGM to Mid Holocene', 
+          par.settings = BuRdTheme(), 
+          at = seq(-4, 4, .4))
+```
+
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-8-1.png"  />
+
+```r
+levelplot(prc.seasonality, margin = F, 
+          main = 'Change in precipitation seasonality (CV)\n LGM to Mid Holocene', 
+          par.settings = BuRdTheme(), 
+          at = seq(-50, 50, 5))
+```
+
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-8-2.png"  />
+
+What about changes in spatial hetergeneity?
+
+```r
+wts <- matrix(c(0,0,1,0,0,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,0,0,1,0,0), nrow = 5)
+
+tmp.hetero <- brick(c(
+  bySeason(mh.tmp, 'djf', 'tmp') %>%
+    focal(w = wts, sd, na.rm = T) %>%
+    subtract(
+      bySeason(lgm.tmp, 'djf', 'tmp') %>% 
+        focal(w = wts, sd, na.rm = T)),
+  bySeason(mh.tmp, 'jja', 'tmp') %>%
+    focal(w = wts, sd, na.rm = T) %>%
+    subtract(
+      bySeason(lgm.tmp, 'jja', 'tmp') %>% 
+        focal(w = wts, sd, na.rm = T)))) %>%
+  mask(mh.tmp[[1]]) # clip buffer added by window
+  
+levelplot(tmp.hetero, margin = F, names.attr = c('Winter', 'Summer'), 
+          main = 'Temperature heterogeneity (SD in 25km radius) change\n LGM to Mid Holocene',
+          par.settings = BuRdTheme(), at = seq(-10, 10, 1))
+```
+
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-1.png"  />
+Same for precipitaiton.
+
+
+```r
+prc.hetero <- brick(c(
+  bySeason(mh.prc, 'djf', 'prc') %>%
+    focal(w = wts, sd, na.rm = T) %>%
+    subtract(
+      bySeason(lgm.prc, 'djf', 'prc') %>% 
+        focal(w = wts, sd, na.rm = T)),
+  bySeason(mh.prc, 'jja', 'prc') %>%
+    focal(w = wts, sd, na.rm = T) %>%
+    subtract(
+      bySeason(lgm.prc, 'jja', 'prc') %>% 
+        focal(w = wts, sd, na.rm = T)))) %>%
+  mask(mh.prc[[1]]) # clip buffer added by window
+  
+  
+levelplot(prc.hetero, margin = F, names.attr = c('Winter', 'Summer'), 
+          main = 'Precipitation heterogeneity (SD in 25km radius) change\n LGM to Mid Holocene',
+          par.settings = BuRdTheme(), at = seq(-500, 500, 50))
+```
+
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-10-1.png"  />
+
+<label for="tufte-mn-" class="margin-toggle">&#8853;</label><input type="checkbox" id="tufte-mn-" class="margin-toggle"><span class="marginnote">Compare these with raw gcm outputs to check the added value of SDM</span>
 
 # Proxy records
 
@@ -173,7 +309,7 @@ ggplot(core.plot, aes(x = years.BP, y = d18O, color = core)) +
 ## Warning: Removed 348 rows containing missing values (geom_path).
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-5-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-12-1.png"  />
 
 ## Detrending
 
@@ -196,4 +332,4 @@ ggplot(core.plot, aes(x = years.BP, y = d18O)) +
 ## Warning: Removed 348 rows containing missing values (geom_path).
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-7-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-14-1.png"  />
