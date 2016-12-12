@@ -4,7 +4,7 @@ author: "Nick Gauthier"
 date: '`r Sys.Date()`'
 output:
   tufte::tufte_html:
-    tufte_features: ["fonts", "italics"]
+    tufte_features: ["fonts","italics"]
   tufte::tufte_handout:
     citation_package: natbib
     latex_engine: xelatex
@@ -95,6 +95,21 @@ trace.dat <- rbind(trace.tmp, trace.prc) %>%
   filter(Year > 6) # get all the decades up to 6ka BP
 ```
 
+## Trend Analysis
+
+Let's use the **EMD** package to calculate actual trend lines using the empirical mode decomposition approach.
+```{r, echo=FALSE, fig.cap="Empirical mode deccomposition", fig.height = 20, fig.margin=TRUE, message=F, cache=TRUE}
+
+emd.test <- emd(trace.dat[,2])
+
+par(mfrow=c(emd.test$nimf+1, 1), mar=c(2,1,2,1))
+rangeimf <- range(emd.test$imf)
+for(i in 1:emd.test$nimf) {
+  plot(1:1600, emd.test$imf[,i], type="l", xlab="", ylab="", ylim=rangeimf,
+       main=paste(i, "-th IMF", sep="")); abline(h=0)
+}
+```
+
 Now organize the temperature and precipitation data to make plotting easier using functions from **tidyr**.
 `r margin_note("Replace the variable names to make facet naming easier too.")`
 ```{r}
@@ -102,34 +117,18 @@ trace.plot <- trace.dat %>%
   gather(key, value, - Year) %>%
   separate(key, c('Variable', 'Region'), ',') %>%
   mutate(Variable = ifelse(Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
-```
 
-Plot everything with **ggplot2**.
-```{r fig.fullwidth = TRUE, fig.width = 16.9, fig.height = 8.61, message = F}
-ggplot(data = trace.plot, aes(x = Year, y = value)) +
-  facet_grid(Variable ~ Region, switch = 'y', scale = 'free_y') +
-  geom_vline(xintercept = c(22, 19, 14, 10, 6), lty = 2) +
-  geom_point(color = 'grey', alpha = .3) +
-  geom_smooth(color = "black", alpha = .8) +
-  labs(x = '1,000 Years BP', y = '') +
-  scale_x_reverse(breaks = seq(6,22,4)) +
-  theme_bw(base_size = 20) +
-  theme(strip.background  = element_blank())
-```
-
-## Trend Analysis
-In the last plot, we calculated the "trend lines" using a simple scatterplot smoother. Let's use the **EMD** package to calculate actual trend lines using the empirical mode decomposition approach.
-```{r cache = T}
 emd.res <- function(x) emd(x)$residue
-
 trace.emd <- trace.dat %>%
   mutate_at(vars(-Year), emd.res) %>%
   gather(key, value, - Year) %>%
   separate(key, c('Variable', 'Region'), ',') %>%
-  mutate(Variable = ifelse(Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
+  mutate(Variable = ifelse(
+    Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
 ```
 
-```{r fig.fullwidth = TRUE, fig.width = 16.9, fig.height = 8.61}
+Plot everything with **ggplot2**.
+```{r, echo=FALSE, fig.cap="Black and white version", fig.width = 16.9, fig.height = 8.61, fig.margin=TRUE, message=F, cache=TRUE}
 ggplot(data = trace.plot, aes(x = Year, y = value)) +
   facet_grid(Variable ~ Region, switch = 'y', scale = 'free_y') +
   geom_vline(xintercept = c(22, 19, 14, 10, 6), lty = 2) +
@@ -140,6 +139,20 @@ ggplot(data = trace.plot, aes(x = Year, y = value)) +
   theme_bw(base_size = 20) +
   theme(strip.background  = element_blank())
 ```
+
+```{r fig.fullwidth = TRUE, fig.width = 16.9, fig.height = 8.61}
+ggplot(data = trace.plot, aes(x = Year, y = value)) +
+  facet_grid(Variable ~ Region, switch = 'y', scale = 'free_y') +
+  geom_vline(xintercept = c(22, 19, 14, 10, 6), lty = 2) +
+  geom_point(aes(color = Variable), alpha = .3) +
+  geom_line(data = trace.emd, size = 1.2, color = "black", alpha = .8) +
+  labs(x = '1,000 Years BP', y = '') +
+  scale_x_reverse(breaks = seq(6,22,4)) +
+  theme_bw(base_size = 20) +
+  theme(strip.background  = element_blank())
+```
+
+
 
 # Proxy records
 
