@@ -65,8 +65,8 @@ trace.dat <- rbind(
     subtract(273.15)) %>% # convert from kelvin to C
   t %>% # transpose
   as.data.frame %>%
-  set_colnames(c('tmp,Southwest', 'tmp,North Central', 'tmp,Northeast', 
-                 'prc,Southwest', 'prc,North Central', 'prc,Northeast')) %>%
+  set_colnames(c('prc,Southwest', 'prc,North Central', 'prc,Northeast', 
+                 'tmp,Southwest', 'tmp,North Central', 'tmp,Northeast')) %>%
   rownames_to_column('Year') %>%
   mutate(Year = as.numeric(substring(Year, 3))) %>%
   filter(Year > 6) # get all the decades up to 6ka BP
@@ -131,6 +131,33 @@ ggplot(data = trace.plot, aes(x = Year, y = value)) +
 <p class="caption marginnote shownote"> </p>
 </div>
 
+Calculate the detrended variances.
+
+```r
+emd.dat <- trace.dat %>%
+  mutate_at(vars(-Year), emd.res)
+
+(trace.dat - emd.dat) %>%
+  select(-Year) %>%
+  cbind(Year = trace.dat$Year, .) %>%
+  mutate(Period = cut(Year, c(22, 19, 14, 10, 6))) %>%
+  group_by(Period) %>%
+  summarise_each(funs(var)) %>%
+  select(-Year)
+```
+
+```
+## # A tibble: 4 × 7
+##    Period `prc,Southwest` `prc,North Central` `prc,Northeast`
+##    <fctr>           <dbl>               <dbl>           <dbl>
+## 1  (6,10]        463.0764            725.7196       1155.0184
+## 2 (10,14]        809.8606           1028.3916       1051.4376
+## 3 (14,19]       1453.6697           1422.2968       2251.1048
+## 4 (19,22]        322.6892            398.9325        644.3691
+## # ... with 3 more variables: `tmp,Southwest` <dbl>, `tmp,North
+## #   Central` <dbl>, `tmp,Northeast` <dbl>
+```
+
 ## Spatial patterns
 
 Now let's import previously-downscaled ensemble equilibrium simulations of the Last Glacial Maximum and Mid Holocene, to estimate how the spatial patterns of climate variability have changed over time, and to test for consistency with the transient TraCE simulation.
@@ -184,7 +211,7 @@ levelplot(prc.change.map, margin = F, names.attr = c('Winter', 'Summer'),
           at = seq(-100,100,10))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-6-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-7-1.png"  />
 
 ```r
 levelplot(tmp.change.map, margin = F, names.attr = c('Winter', 'Summer'), 
@@ -193,7 +220,7 @@ levelplot(tmp.change.map, margin = F, names.attr = c('Winter', 'Summer'),
           at = seq(-20,20,2))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-6-2.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-7-2.png"  />
 
 Now we can calculate changes in seasonality. For temperature, this is just the standard deviation of all 12 monthly averages. For precipitation, we will use the coefficient of variation.
 
@@ -210,7 +237,7 @@ levelplot(tmp.seasonality, margin = F,
           at = seq(-4, 4, .4))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-8-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-1.png"  />
 
 ```r
 levelplot(prc.seasonality, margin = F, 
@@ -219,7 +246,7 @@ levelplot(prc.seasonality, margin = F,
           at = seq(-50, 50, 5))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-8-2.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-2.png"  />
 
 What about changes in spatial hetergeneity?
 
@@ -244,7 +271,7 @@ levelplot(tmp.hetero, margin = F, names.attr = c('Winter', 'Summer'),
           par.settings = BuRdTheme(), at = seq(-10, 10, 1))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-10-1.png"  />
 Same for precipitaiton.
 
 
@@ -268,68 +295,19 @@ levelplot(prc.hetero, margin = F, names.attr = c('Winter', 'Summer'),
           par.settings = BuRdTheme(), at = seq(-500, 500, 50))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-10-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-11-1.png"  />
 
 <label for="tufte-mn-" class="margin-toggle">&#8853;</label><input type="checkbox" id="tufte-mn-" class="margin-toggle"><span class="marginnote">Compare these with raw gcm outputs to check the added value of SDM</span>
 
-# Proxy records
-
-Get ice core data.
 
 ```r
-core.dat <- read_csv('icecores_newdates.csv') %>%
-  transmute(years.BP, ngrip =  d18O.NGRIP2.ppt, gisp = d18O.GISP2.ppt) %>%
-  filter(years.BP < 24000 & years.BP >=6000)
-```
-
-```
-## Warning: Missing column names filled in: 'X1' [1]
-```
-Plot it
-
-```r
-core.plot <- gather(core.dat, 'core', 'd18O', 2:3)
-
-ggplot(core.plot, aes(x = years.BP, y = d18O, color = core)) +
-  geom_line(alpha = .54) +
-  geom_smooth() +
-  scale_x_reverse(breaks = seq(6000,22000,4000)) +
-  theme_minimal()
-```
-
-```
-## `geom_smooth()` using method = 'gam'
-```
-
-```
-## Warning: Removed 367 rows containing non-finite values (stat_smooth).
-```
-
-```
-## Warning: Removed 348 rows containing missing values (geom_path).
-```
-
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-12-1.png"  />
-
-## Detrending
-
-```r
-cores <- core.dat %>% na.omit
-core.emd.plot <- emd(cores$gisp, cores$years.BP)$residue %>% 
-  data_frame(d18O = ., years.BP = cores$years.BP)
+knitr::knit_exit()
 ```
 
 
-```r
-ggplot(core.plot, aes(x = years.BP, y = d18O)) +
-  geom_line(aes(color = core), alpha = .54) +
-  geom_line(data = core.emd.plot) +
-  scale_x_reverse(breaks = seq(6000,22000,4000)) +
-  theme_minimal()
-```
 
-```
-## Warning: Removed 348 rows containing missing values (geom_path).
-```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-14-1.png"  />
+
+
+
+

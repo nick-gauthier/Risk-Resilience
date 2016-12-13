@@ -94,8 +94,8 @@ trace.dat <- rbind(
     subtract(273.15)) %>% # convert from kelvin to C
   t %>% # transpose
   as.data.frame %>%
-  set_colnames(c('tmp,Southwest', 'tmp,North Central', 'tmp,Northeast', 
-                 'prc,Southwest', 'prc,North Central', 'prc,Northeast')) %>%
+  set_colnames(c('prc,Southwest', 'prc,North Central', 'prc,Northeast', 
+                 'tmp,Southwest', 'tmp,North Central', 'tmp,Northeast')) %>%
   rownames_to_column('Year') %>%
   mutate(Year = as.numeric(substring(Year, 3))) %>%
   filter(Year > 6) # get all the decades up to 6ka BP
@@ -106,7 +106,7 @@ trace.dat <- rbind(
 ## Trend Analysis
 
 Let's use the **EMD** package to calculate actual trend lines using the empirical mode decomposition approach.
-```{r, echo=FALSE, fig.cap="Empirical mode decomposition", fig.height = 12, fig.margin=TRUE, message=F, cache = F}
+```{r, echo=FALSE, fig.cap="Empirical mode decomposition", fig.height = 10, fig.margin=TRUE, message=F, cache = F}
 emd.test <- emd(trace.dat[,2])
 
 par(mfrow=c(emd.test$nimf+1, 1), mar=c(2,1,2,1))
@@ -161,6 +161,20 @@ ggplot(data = trace.plot, aes(x = Year, y = value)) +
   guides(color = "none") +
   theme_bw(base_size = 20) +
   theme(strip.background  = element_blank())
+```
+
+Calculate the detrended variances.
+```{r}
+emd.dat <- trace.dat %>%
+  mutate_at(vars(-Year), emd.res)
+
+(trace.dat - emd.dat) %>%
+  select(-Year) %>%
+  cbind(Year = trace.dat$Year, .) %>%
+  mutate(Period = cut(Year, c(22, 19, 14, 10, 6))) %>%
+  group_by(Period) %>%
+  summarise_each(funs(var)) %>%
+  select(-Year)
 ```
 
 ## Spatial patterns
@@ -279,6 +293,11 @@ levelplot(prc.hetero, margin = F, names.attr = c('Winter', 'Summer'),
 ```
 
 `r margin_note("Compare these with raw gcm outputs to check the added value of SDM")`
+
+```{r}
+knitr::knit_exit()
+```
+
 
 # Proxy records
 
