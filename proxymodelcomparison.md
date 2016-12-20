@@ -300,9 +300,6 @@ levelplot(prc.hetero, margin = F, names.attr = c('Winter', 'Summer'),
 <label for="tufte-mn-" class="margin-toggle">&#8853;</label><input type="checkbox" id="tufte-mn-" class="margin-toggle"><span class="marginnote">Compare these with raw gcm outputs to check the added value of SDM</span>
 
 
-```r
-knitr::knit_exit()
-```
 
 
 
