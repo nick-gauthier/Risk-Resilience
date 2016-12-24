@@ -20,7 +20,8 @@ plt.dat <- data_frame(year = rownames(getTrace('~/Downloads/trace.01-36.22000BP.
                    b = getTrace('~/Downloads/trace.01-36.22000BP.cam2.PRECT.22000BP_decavgMAM_400BCE.nc')[,1],
                    c = getTrace('~/Downloads/trace.01-36.22000BP.cam2.PRECT.22000BP_decavgJJA_400BCE.nc')[,1],
                    d = getTrace('~/Downloads/trace.01-36.22000BP.cam2.PRECT.22000BP_decavgSON_400BCE.nc')[,1]) %>%
-    mutate(year = as.numeric(substring(year, 3)) * -1) %>%#filter(year < -6) %>%
+  mutate(year = as.numeric(substring(year, 3)) * -1) %>%
+  filter(year < 0) %>%
   mutate(century = round(year, 1)) %>%
   group_by(century) %>%
   summarise_each(funs(median)) %>%
@@ -28,13 +29,19 @@ plt.dat <- data_frame(year = rownames(getTrace('~/Downloads/trace.01-36.22000BP.
   gather(key, value, -year) %>%
   mutate(key = as.numeric(as.factor(key)))
 
+
 ggplot(data = plt.dat, aes(x = key, y = value, group = year, color = year)) + 
   geom_smooth(se = F) + 
   scale_color_gradientn(colors = myPalette(100)) +
   theme_minimal()
 
 
-###### GAM
-library(mgcv)
+# attempt at getting circular seasonal cycle
+expanded.dat <- data_frame(year = rep(plt.dat$year, times = 3), key = c(plt.dat$key, plt.dat$key - 4, plt.dat$key + 4), value = rep(plt.dat$value, times = 3))
 
-trace.gam 
+ggplot(data = expanded.dat, aes(x = key, y = value, group = year, color = year)) + 
+  geom_smooth(se = F) + 
+  scale_color_gradientn(colors = myPalette(100)) +
+  coord_cartesian(xlim=c(1,4)) +
+  theme_minimal()
+# looks odd
