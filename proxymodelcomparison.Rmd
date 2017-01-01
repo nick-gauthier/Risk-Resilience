@@ -53,7 +53,7 @@ library(EMD) # calculate trends in the data
 ```{r map, echo = F, fig.margin = T, message = F, cache = T, fig.cap = 'Locations of 3 sample points.'}
 library(ggmap)
 
-samp.pts <- matrix(c(0,40, 4,44, 12,46), ncol = 2, byrow = T) %>% as_data_frame
+samp.pts <- matrix(c(0,40, 4,44, 12, 46, 12, 43), ncol = 2, byrow = T) %>% as_data_frame
 
 get_map(location = c(left = -10, bottom = 35, right = 20, top = 50), 
         maptype = 'terrain-background', source = 'stamen') %>% 
@@ -62,8 +62,10 @@ get_map(location = c(left = -10, bottom = 35, right = 20, top = 50),
 
 Create a matrix with the coordinates for the three locations of interest in the west Mediterranean.
 ```{r samppoints}
-samp.pts <- matrix(c(0, 40, 4, 44, 12, 46), 
+samp.pts <- matrix(c(0, 40, 4, 44, 12, 46, 12, 43), 
                    ncol = 2, byrow = T)
+
+#14,43
 ```
 
 ## TraCE-21k
@@ -94,8 +96,8 @@ trace.dat <- rbind(
     multiply_by(3.154e+10)) %>% # convert to mm/year
   t %>% # transpose
   as.data.frame %>%
-  set_colnames(c('tmp,Southwest', 'tmp,North Central', 'tmp,Northeast',
-                 'prc,Southwest', 'prc,North Central', 'prc,Northeast')) %>%
+  set_colnames(c('tmp,Southwest', 'tmp,North Central', 'tmp,Northeast', 'tmp,Southeast',
+                 'prc,Southwest', 'prc,North Central', 'prc,Northeast', 'prc,Southeast')) %>%
   rownames_to_column('Year') %>%
   mutate(Year = as.numeric(substring(Year, 3))) %>%
   filter(Year > 6) # get all the decades up to 6ka BP
