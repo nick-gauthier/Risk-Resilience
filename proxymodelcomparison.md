@@ -34,11 +34,13 @@ library(EMD) # calculate trends in the data
 <p class="caption marginnote">-->Locations of 3 sample points.<!--</p>-->
 <!--</div>--></span></p>
 
-Create a matrix with the coordinates for the three locations of interest in the west Mediterranean. We'll be focusing on large grid cell averages, so the points do not have to be directly over land.
+Create a matrix with the coordinates for the three locations of interest in the west Mediterranean.
 
 ```r
-samp.pts <- matrix(c(1, 40, 4, 42, 14, 46), 
+samp.pts <- matrix(c(0, 40, 4, 44, 12, 46, 14, 43), 
                    ncol = 2, byrow = T)
+
+#12,43
 ```
 
 ## TraCE-21k
@@ -57,16 +59,16 @@ Now pull all the TraCE data into one data frame, with one row per year, and one 
 
 ```r
 trace.dat <- rbind(
-  brick('trace.01-36.22000BP.cam2.PRECT.22000BP_decavg_400BCE.nc') %>%
-    raster::extract(samp.pts) %>% # extract data at these coordinates
-    multiply_by(3.154e+10), # convert to mm/year
   brick('trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
     raster::extract(samp.pts) %>% 
-    subtract(273.15)) %>% # convert from kelvin to C
+    subtract(273.15), # convert from kelvin to C
+  brick('trace.01-36.22000BP.cam2.PRECT.22000BP_decavg_400BCE.nc') %>%
+    raster::extract(samp.pts) %>% # extract data at these coordinates
+    multiply_by(3.154e+10)) %>% # convert to mm/year
   t %>% # transpose
   as.data.frame %>%
-  set_colnames(c('prc,Southwest', 'prc,North Central', 'prc,Northeast', 
-                 'tmp,Southwest', 'tmp,North Central', 'tmp,Northeast')) %>%
+  set_colnames(c('tmp,Southwest', 'tmp,North Central', 'tmp,Northeast', 'tmp,Southeast',
+                 'prc,Southwest', 'prc,North Central', 'prc,Northeast', 'prc,Southeast')) %>%
   rownames_to_column('Year') %>%
   mutate(Year = as.numeric(substring(Year, 3))) %>%
   filter(Year > 6) # get all the decades up to 6ka BP
@@ -94,13 +96,15 @@ trace.plot <- trace.dat %>%
   mutate(Variable = ifelse(
     Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
 
-emd.res <- function(x) emd(x)$residue
+emd.res <- function(x) emd(x, boundary = 'wave')$residue
 trace.emd <- trace.dat %>%
   mutate_at(vars(-Year), emd.res) %>%
   gather(key, value, - Year) %>%
   separate(key, c('Variable', 'Region'), ',') %>%
   mutate(Variable = ifelse(
     Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
+
+#trace.plot %>% mutate(Raw = value, Trend = trace.emd[,4], value = NULL) %>% write_csv('~/Downloads/trace_plot_data.csv')
 ```
 
 ## Plotting
@@ -147,16 +151,42 @@ emd.dat <- trace.dat %>%
 ```
 
 ```
-## # A tibble: 4 × 7
-##    Period `prc,Southwest` `prc,North Central` `prc,Northeast`
+## # A tibble: 4 × 9
+##    Period `tmp,Southwest` `tmp,North Central` `tmp,Northeast`
 ##    <fctr>           <dbl>               <dbl>           <dbl>
-## 1  (6,10]        463.0764            725.7196       1155.0184
-## 2 (10,14]        809.8606           1028.3916       1051.4376
-## 3 (14,19]       1453.6697           1422.2968       2251.1048
-## 4 (19,22]        322.6892            398.9325        644.3691
-## # ... with 3 more variables: `tmp,Southwest` <dbl>, `tmp,North
-## #   Central` <dbl>, `tmp,Northeast` <dbl>
+## 1  (6,10]      0.08704209           0.0922012       0.1853124
+## 2 (10,14]      0.27096878           0.3907428       0.8121861
+## 3 (14,19]      0.40989953           1.4185010       1.3565404
+## 4 (19,22]      0.10400222           0.2620887       0.2029233
+## # ... with 5 more variables: `tmp,Southeast` <dbl>, `prc,Southwest` <dbl>,
+## #   `prc,North Central` <dbl>, `prc,Northeast` <dbl>,
+## #   `prc,Southeast` <dbl>
 ```
+
+## Climate trajectories
+
+
+```r
+myPalette <- colorRampPalette(rev(brewer.pal(4, "Spectral")))
+ggplot(trace.dat, aes(x = `prc,Southwest`, y =`tmp,Southwest`, color = Year)) +
+  geom_path(linejoin = 'round') + 
+  scale_color_gradientn(colors = myPalette(100)) +
+  theme_minimal()
+```
+
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-5-1.png"  />
+
+```r
+ggplot(trace.dat, aes(x = `prc,Southwest`, y =`tmp,Southwest`, color = Year)) +
+  geom_point(size = 3) + 
+  geom_path(data = emd.dat, color = 'black') + 
+  scale_color_gradientn(colors = myPalette(100)) +
+  theme_minimal()
+```
+
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-5-2.png"  />
+
+
 
 ## Spatial patterns
 
@@ -181,6 +211,8 @@ mh.tmp <- brick('Downscaled/ensemble_tmn_mh6k.tif') %>%
   add(brick('Downscaled/ensemble_tmx_mh6k.tif') %>% crop(bbox)) %>%
   divide_by(2)
 ```
+
+
 
 Calculate changes in seasonal precipitation and temperature.
 
@@ -211,7 +243,7 @@ levelplot(prc.change.map, margin = F, names.attr = c('Winter', 'Summer'),
           at = seq(-100,100,10))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-7-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-1.png"  />
 
 ```r
 levelplot(tmp.change.map, margin = F, names.attr = c('Winter', 'Summer'), 
@@ -220,7 +252,7 @@ levelplot(tmp.change.map, margin = F, names.attr = c('Winter', 'Summer'),
           at = seq(-20,20,2))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-7-2.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-2.png"  />
 
 Now we can calculate changes in seasonality. For temperature, this is just the standard deviation of all 12 monthly averages. For precipitation, we will use the coefficient of variation.
 
@@ -237,7 +269,7 @@ levelplot(tmp.seasonality, margin = F,
           at = seq(-4, 4, .4))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-11-1.png"  />
 
 ```r
 levelplot(prc.seasonality, margin = F, 
@@ -246,7 +278,7 @@ levelplot(prc.seasonality, margin = F,
           at = seq(-50, 50, 5))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-2.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-11-2.png"  />
 
 What about changes in spatial hetergeneity?
 
@@ -271,7 +303,7 @@ levelplot(tmp.hetero, margin = F, names.attr = c('Winter', 'Summer'),
           par.settings = BuRdTheme(), at = seq(-10, 10, 1))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-10-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-12-1.png"  />
 Same for precipitaiton.
 
 
@@ -295,7 +327,7 @@ levelplot(prc.hetero, margin = F, names.attr = c('Winter', 'Summer'),
           par.settings = BuRdTheme(), at = seq(-500, 500, 50))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-11-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-13-1.png"  />
 
 <label for="tufte-mn-" class="margin-toggle">&#8853;</label><input type="checkbox" id="tufte-mn-" class="margin-toggle"><span class="marginnote">Compare these with raw gcm outputs to check the added value of SDM</span>
 
