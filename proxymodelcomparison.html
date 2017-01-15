@@ -12,7 +12,7 @@
 
 <meta name="author" content="Nick Gauthier" />
 
-<meta name="date" content="2017-01-02" />
+<meta name="date" content="2017-01-14" />
 
 <title>West Mediterranean during the Last Deglaciation</title>
 
@@ -43,7 +43,7 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 <h1 class="title toc-ignore">West Mediterranean during the Last Deglaciation</h1>
 <h3 class="subtitle"><em>A proxy – model intercomparison</em></h3>
 <h4 class="author"><em>Nick Gauthier</em></h4>
-<h4 class="date"><em>2017-01-02</em></h4>
+<h4 class="date"><em>2017-01-14</em></h4>
 
 
 
@@ -160,7 +160,8 @@ Plot everything with <strong>ggplot2</strong>.
   mutate(Period = cut(Year, c(22, 19, 14, 10, 6))) %&gt;%
   group_by(Period) %&gt;%
   summarise_each(funs(var)) %&gt;%
-  select(-Year)</code></pre>
+  select(-Year) %&gt;%
+  print(width = Inf)</code></pre>
 <pre><code>## # A tibble: 4 × 9
 ##    Period `tmp,Southwest` `tmp,North Central` `tmp,Northeast`
 ##    &lt;fctr&gt;           &lt;dbl&gt;               &lt;dbl&gt;           &lt;dbl&gt;
@@ -168,9 +169,18 @@ Plot everything with <strong>ggplot2</strong>.
 ## 2 (10,14]      0.27096878           0.3907428       0.8121861
 ## 3 (14,19]      0.40989953           1.4185010       1.3565404
 ## 4 (19,22]      0.10400222           0.2620887       0.2029233
-## # ... with 5 more variables: `tmp,Southeast` &lt;dbl&gt;, `prc,Southwest` &lt;dbl&gt;,
-## #   `prc,North Central` &lt;dbl&gt;, `prc,Northeast` &lt;dbl&gt;,
-## #   `prc,Southeast` &lt;dbl&gt;</code></pre>
+##   `tmp,Southeast` `prc,Southwest` `prc,North Central` `prc,Northeast`
+##             &lt;dbl&gt;           &lt;dbl&gt;               &lt;dbl&gt;           &lt;dbl&gt;
+## 1       0.4481085        488.1919            778.4795       1230.0957
+## 2       0.3543841        772.4411           1015.4651       1191.1768
+## 3       0.9364233       1317.6964           1308.8443       1567.4188
+## 4       0.2716865        313.4281            391.5337        531.6333
+##   `prc,Southeast`
+##             &lt;dbl&gt;
+## 1        739.1441
+## 2        936.9639
+## 3       2021.5821
+## 4        649.1395</code></pre>
 </div>
 <div id="climate-trajectories" class="section level2">
 <h2>Climate trajectories</h2>

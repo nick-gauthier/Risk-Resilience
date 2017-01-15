@@ -178,7 +178,8 @@ emd.dat <- trace.dat %>%
   mutate(Period = cut(Year, c(22, 19, 14, 10, 6))) %>%
   group_by(Period) %>%
   summarise_each(funs(var)) %>%
-  select(-Year)
+  select(-Year) %>%
+  print(width = Inf)
 ```
 
 ## Climate trajectories

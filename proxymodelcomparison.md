@@ -147,7 +147,8 @@ emd.dat <- trace.dat %>%
   mutate(Period = cut(Year, c(22, 19, 14, 10, 6))) %>%
   group_by(Period) %>%
   summarise_each(funs(var)) %>%
-  select(-Year)
+  select(-Year) %>%
+  print(width = Inf)
 ```
 
 ```
@@ -158,9 +159,18 @@ emd.dat <- trace.dat %>%
 ## 2 (10,14]      0.27096878           0.3907428       0.8121861
 ## 3 (14,19]      0.40989953           1.4185010       1.3565404
 ## 4 (19,22]      0.10400222           0.2620887       0.2029233
-## # ... with 5 more variables: `tmp,Southeast` <dbl>, `prc,Southwest` <dbl>,
-## #   `prc,North Central` <dbl>, `prc,Northeast` <dbl>,
-## #   `prc,Southeast` <dbl>
+##   `tmp,Southeast` `prc,Southwest` `prc,North Central` `prc,Northeast`
+##             <dbl>           <dbl>               <dbl>           <dbl>
+## 1       0.4481085        488.1919            778.4795       1230.0957
+## 2       0.3543841        772.4411           1015.4651       1191.1768
+## 3       0.9364233       1317.6964           1308.8443       1567.4188
+## 4       0.2716865        313.4281            391.5337        531.6333
+##   `prc,Southeast`
+##             <dbl>
+## 1        739.1441
+## 2        936.9639
+## 3       2021.5821
+## 4        649.1395
 ```
 
 ## Climate trajectories
