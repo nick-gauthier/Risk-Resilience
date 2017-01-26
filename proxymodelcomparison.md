@@ -93,7 +93,8 @@ Now organize the temperature and precipitation data to make plotting easier usin
 trace.plot <- trace.dat %>% 
   gather(key, value, - Year) %>%
   separate(key, c('Variable', 'Region'), ',') %>%
-  mutate(Variable = ifelse(
+  mutate(Region = factor(Region, levels = c('Southwest', 'North Central', 'Northeast', 'Southeast')),    # turn region into factor so it is ordered correctly
+         Variable = ifelse(
     Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
 
 emd.res <- function(x) emd(x, boundary = 'wave')$residue
@@ -101,7 +102,8 @@ trace.emd <- trace.dat %>%
   mutate_at(vars(-Year), emd.res) %>%
   gather(key, value, - Year) %>%
   separate(key, c('Variable', 'Region'), ',') %>%
-  mutate(Variable = ifelse(
+  mutate(Region = factor(Region, levels = c('Southwest', 'North Central', 'Northeast', 'Southeast')),
+         Variable = ifelse(
     Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
 
 #trace.plot %>% mutate(Raw = value, Trend = trace.emd[,4], value = NULL) %>% write_csv('~/Downloads/trace_plot_data.csv')
@@ -236,7 +238,13 @@ bySeason <- function(x, season, var){
 }
 
 prc.change.map <- brick(c(
-  (bySeason(mh.prc, 'djf', 'prc') - bySeason(lgm.prc, 'djf', 'prc')) * 100 / bySeason(lgm.prc, 'djf', 'prc'),
+  bySeason(mh.prc, 'djf', 'prc') - bySeason(lgm.prc, 'djf', 'prc'),
+  bySeason(mh.prc, 'jja', 'prc') - bySeason(lgm.prc, 'jja', 'prc')))
+prc.change.map[prc.change.map < -200] <- -200 # so the plot isn't washed out by large precip values
+
+
+prc.change.map.percent <- brick(c(
+  (bySeason(mh.prc, 'djf', 'prc') - bySeason(lgm.prc, 'djf', 'prc')) * 100 / bySeason(lgm.prc, 'djf', 'prc'), 
   (bySeason(mh.prc, 'jja', 'prc') - bySeason(lgm.prc, 'jja', 'prc')) * 100 / bySeason(lgm.prc, 'jja', 'prc')))
 
 tmp.change.map <- brick(c(
@@ -247,7 +255,7 @@ tmp.change.map <- brick(c(
 Plot the results
 
 ```r
-levelplot(prc.change.map, margin = F, names.attr = c('Winter', 'Summer'),
+levelplot(prc.change.map.percent, margin = F, names.attr = c('Winter', 'Summer'),
           main = 'Precipitation Change (%)\n LGM to Mid Holocene',
           par.settings = PuOrTheme(), 
           at = seq(-100,100,10))
@@ -256,13 +264,23 @@ levelplot(prc.change.map, margin = F, names.attr = c('Winter', 'Summer'),
 <img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-1.png"  />
 
 ```r
+# note in the next plot all values less than -200 have been turned into -200
+levelplot(prc.change.map, margin = F, names.attr = c('Winter', 'Summer'), 
+          main = 'Precipitation Change (mm) \n LGM to Mid Holocene',
+          par.settings = PuOrTheme(), 
+          at = seq(-200,200,20))    
+```
+
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-2.png"  />
+
+```r
 levelplot(tmp.change.map, margin = F, names.attr = c('Winter', 'Summer'), 
-          main = 'Temperature Change\n LGM to Mid Holocene',
+          main = 'Temperature Change (°C)\n LGM to Mid Holocene',
           par.settings = BuRdTheme(),
           at = seq(-20,20,2))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-2.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-3.png"  />
 
 Now we can calculate changes in seasonality. For temperature, this is just the standard deviation of all 12 monthly averages. For precipitation, we will use the coefficient of variation.
 
@@ -284,7 +302,7 @@ levelplot(tmp.seasonality, margin = F,
 ```r
 levelplot(prc.seasonality, margin = F, 
           main = 'Change in precipitation seasonality (CV)\n LGM to Mid Holocene', 
-          par.settings = BuRdTheme(), 
+          par.settings = PuOrTheme(), 
           at = seq(-50, 50, 5))
 ```
 
@@ -318,7 +336,7 @@ Same for precipitaiton.
 
 
 ```r
-prc.hetero <- brick(c(
+prc.hetero.sd <- brick(c(
   bySeason(mh.prc, 'djf', 'prc') %>%
     focal(w = wts, sd, na.rm = T) %>%
     subtract(
@@ -330,14 +348,59 @@ prc.hetero <- brick(c(
       bySeason(lgm.prc, 'jja', 'prc') %>% 
         focal(w = wts, sd, na.rm = T)))) %>%
   mask(mh.prc[[1]]) # clip buffer added by window
-  
-  
-levelplot(prc.hetero, margin = F, names.attr = c('Winter', 'Summer'), 
+
+levelplot(prc.hetero.sd, margin = F, names.attr = c('Winter', 'Summer'), 
           main = 'Precipitation heterogeneity (SD in 25km radius) change\n LGM to Mid Holocene',
-          par.settings = BuRdTheme(), at = seq(-500, 500, 50))
+          par.settings = BuRdTheme(), at = seq(-1000, 1000, 100))
 ```
 
 <img src="proxymodelcomparison_files/figure-html/unnamed-chunk-13-1.png"  />
+
+```r
+#capped at -100
+prc.hetero.sd[prc.hetero.sd < -100] <- -100
+levelplot(prc.hetero.sd, margin = F, names.attr = c('Winter', 'Summer'), 
+          main = 'Precipitation heterogeneity (SD in 25km radius) change\n LGM to Mid Holocene',
+          par.settings = BuRdTheme(), at = seq(-100, 100, 10))
+```
+
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-13-2.png"  />
+
+
+```r
+## now cv
+
+prc.hetero.cv <- brick(c(
+  bySeason(mh.prc, 'djf', 'prc') %>%
+    focal(w = wts, cv, na.rm = T) %>%
+    subtract(
+      bySeason(lgm.prc, 'djf', 'prc') %>% 
+        focal(w = wts, cv, na.rm = T)),
+  bySeason(mh.prc, 'jja', 'prc') %>%
+    focal(w = wts, cv, na.rm = T) %>%
+    subtract(
+      bySeason(lgm.prc, 'jja', 'prc') %>% 
+        focal(w = wts, cv, na.rm = T)))) %>%
+  mask(mh.prc[[1]]) # clip buffer added by window
+  
+levelplot(prc.hetero.cv, margin = F, names.attr = c('Winter', 'Summer'), 
+          main = 'Precipitation heterogeneity (CV in 25km radius) change\n LGM to Mid Holocene',
+          par.settings = BuRdTheme(), at = seq(-2.2, 2.2, .22))
+```
+
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-14-1.png"  />
+
+```r
+# now cap at +/- .25
+
+prc.hetero.cv[prc.hetero.cv > .25] <- .25
+prc.hetero.cv[prc.hetero.cv < -.25] <- -.25
+levelplot(prc.hetero.cv, margin = F, names.attr = c('Winter', 'Summer'), 
+          main = 'Precipitation heterogeneity (CV in 25km radius) change\n LGM to Mid Holocene',
+          par.settings = BuRdTheme(), at = seq(-.25, .25, .025))
+```
+
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-14-2.png"  />
 
 <label for="tufte-mn-" class="margin-toggle">&#8853;</label><input type="checkbox" id="tufte-mn-" class="margin-toggle"><span class="marginnote">Compare these with raw gcm outputs to check the added value of SDM</span>
 
