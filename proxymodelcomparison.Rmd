@@ -70,7 +70,7 @@ samp.pts <- matrix(c(0, 40, 4, 44, 12, 46, 14, 43),
 
 ## TraCE-21k
 
-```{r trace_map, echo=FALSE, fig.show = 'hold', fig.cap = 'TraCE21-k global precipitation and temperature', fig.margin=TRUE, message=F, cache = F}
+```{r trace_map, echo=FALSE, fig.show = 'hold', fig.cap = 'TraCE21-k global precipitation and temperature', fig.margin=TRUE, message=F}
 brick('trace.01-36.22000BP.cam2.PRECT.22000BP_decavg_400BCE.nc') %>%
   extract2(1) %>%
   multiply_by(3.154e+10) %>%
@@ -78,7 +78,7 @@ brick('trace.01-36.22000BP.cam2.PRECT.22000BP_decavg_400BCE.nc') %>%
 
 brick('trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
   extract2(1) %>%
-  subtract(273.15)%>%
+  subtract(273.15) %>%
   levelplot(margin = F, par.settings = BuRdTheme())
 ```
 
@@ -181,8 +181,47 @@ emd.dat <- trace.dat %>%
   group_by(Period) %>%
   summarise_each(funs(var)) %>%
   select(-Year) %>%
-  print(width = Inf)
+    print(width = Inf)
 ```
+
+How do these compare to the overall regional variance?
+```{r}
+bbox <- extent(c(-10, 20, 35, 47))
+
+trace.reg.avg <- rbind(
+  brick('trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
+    raster::extract(bbox, fun = mean) %>% 
+    subtract(273.15), # convert from kelvin to C
+  brick('trace.01-36.22000BP.cam2.PRECT.22000BP_decavg_400BCE.nc') %>%
+    raster::extract(bbox, fun = mean) %>%
+    multiply_by(3.154e+10)) %>% # convert to mm/year
+  t %>% # transpose
+  as.data.frame %>%
+  set_colnames(c('tmp,StudyArea', 'prc,StudyArea')) %>%
+  rownames_to_column('Year') %>%
+  mutate(Year = as.numeric(substring(Year, 3))) %>%
+  filter(Year > 6) 
+
+emd.reg.avg <- trace.reg.avg %>%
+  mutate_at(vars(-Year), emd.res)
+
+(trace.dat - emd.dat) %>%
+  select(-Year) %>%
+  cbind(Year = trace.dat$Year, .) %>%
+  mutate(Period = cut(Year, c(22, 19, 14, 10, 6))) %>%
+  group_by(Period) %>%
+  summarise_each(funs(var)) %>%
+  select(-Year) %>%
+  subtract(((trace.reg.avg - emd.reg.avg) %>%
+  magrittr::extract(c(2,2,2,2,3,3,3,3)) %>%
+  cbind(Year = trace.dat$Year, .) %>%
+  mutate(Period = cut(Year, c(22, 19, 14, 10, 6))) %>%
+  group_by(Period) %>%
+  summarise_each(funs(var)) %>%
+  select(-Year))) %>%
+    print(width = Inf)
+```
+
 
 ## Climate trajectories
 
@@ -362,15 +401,21 @@ prc.hetero.sd <- brick(c(
         focal(w = wts, sd, na.rm = T)))) %>%
   mask(mh.prc[[1]]) # clip buffer added by window
 
-levelplot(prc.hetero.sd, margin = F, names.attr = c('Winter', 'Summer'), 
-          main = 'Precipitation heterogeneity (SD in 25km radius) change\n LGM to Mid Holocene',
-          par.settings = BuRdTheme(), at = seq(-1000, 1000, 100))
+#levelplot(prc.hetero.sd, margin = F, names.attr = c('Winter', 'Summer'), 
+#          main = 'Precipitation heterogeneity (SD in 25km radius) change\n LGM to Mid Holocene',
+#          par.settings = BuRdTheme(), at = seq(-500, 500, 50))
 
-#capped at -100
-prc.hetero.sd[prc.hetero.sd < -100] <- -100
+#capped at -75
+prc.hetero.sd[prc.hetero.sd < -75] <- -75
 levelplot(prc.hetero.sd, margin = F, names.attr = c('Winter', 'Summer'), 
           main = 'Precipitation heterogeneity (SD in 25km radius) change\n LGM to Mid Holocene',
-          par.settings = BuRdTheme(), at = seq(-100, 100, 10))
+          par.settings = BuRdTheme(), at = seq(-75, 75, 7.5))
+
+# capped at -60
+prc.hetero.sd[prc.hetero.sd < -60] <- -60
+levelplot(prc.hetero.sd, margin = F, names.attr = c('Winter', 'Summer'), 
+          main = 'Precipitation heterogeneity (SD in 25km radius) change\n LGM to Mid Holocene',
+          par.settings = BuRdTheme(), at = seq(-60, 60, 6))
 ```
 
 ```{r}
@@ -389,9 +434,9 @@ prc.hetero.cv <- brick(c(
         focal(w = wts, cv, na.rm = T)))) %>%
   mask(mh.prc[[1]]) # clip buffer added by window
   
-levelplot(prc.hetero.cv, margin = F, names.attr = c('Winter', 'Summer'), 
-          main = 'Precipitation heterogeneity (CV in 25km radius) change\n LGM to Mid Holocene',
-          par.settings = BuRdTheme(), at = seq(-2.2, 2.2, .22))
+#levelplot(prc.hetero.cv, margin = F, names.attr = c('Winter', 'Summer'), 
+#          main = 'Precipitation heterogeneity (CV in 25km radius) change\n LGM to Mid Holocene',
+#          par.settings = BuRdTheme(), at = seq(-2.2, 2.2, .22))
 
 # now cap at +/- .25
 

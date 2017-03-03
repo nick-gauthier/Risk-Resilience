@@ -150,7 +150,7 @@ emd.dat <- trace.dat %>%
   group_by(Period) %>%
   summarise_each(funs(var)) %>%
   select(-Year) %>%
-  print(width = Inf)
+    print(width = Inf)
 ```
 
 ```
@@ -175,6 +175,63 @@ emd.dat <- trace.dat %>%
 ## 4        649.1395
 ```
 
+How do these compare to the overall regional variance?
+
+```r
+bbox <- extent(c(-10, 20, 35, 47))
+
+trace.reg.avg <- rbind(
+  brick('trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
+    raster::extract(bbox, fun = mean) %>% 
+    subtract(273.15), # convert from kelvin to C
+  brick('trace.01-36.22000BP.cam2.PRECT.22000BP_decavg_400BCE.nc') %>%
+    raster::extract(bbox, fun = mean) %>%
+    multiply_by(3.154e+10)) %>% # convert to mm/year
+  t %>% # transpose
+  as.data.frame %>%
+  set_colnames(c('tmp,StudyArea', 'prc,StudyArea')) %>%
+  rownames_to_column('Year') %>%
+  mutate(Year = as.numeric(substring(Year, 3))) %>%
+  filter(Year > 6) 
+
+emd.reg.avg <- trace.reg.avg %>%
+  mutate_at(vars(-Year), emd.res)
+
+(trace.dat - emd.dat) %>%
+  select(-Year) %>%
+  cbind(Year = trace.dat$Year, .) %>%
+  mutate(Period = cut(Year, c(22, 19, 14, 10, 6))) %>%
+  group_by(Period) %>%
+  summarise_each(funs(var)) %>%
+  select(-Year) %>%
+  subtract(((trace.reg.avg - emd.reg.avg) %>%
+  magrittr::extract(c(2,2,2,2,3,3,3,3)) %>%
+  cbind(Year = trace.dat$Year, .) %>%
+  mutate(Period = cut(Year, c(22, 19, 14, 10, 6))) %>%
+  group_by(Period) %>%
+  summarise_each(funs(var)) %>%
+  select(-Year))) %>%
+    print(width = Inf)
+```
+
+```
+## Warning in Ops.factor(left, right): '-' not meaningful for factors
+```
+
+```
+##   Period tmp,Southwest tmp,North Central tmp,Northeast tmp,Southeast
+## 1     NA   -0.03803870       -0.03287960    0.06023160    0.32302766
+## 2     NA   -0.16399338       -0.04421932    0.37722393   -0.08057806
+## 3     NA   -0.58309403        0.42550744    0.36354680   -0.05657024
+## 4     NA   -0.06821138        0.08987510    0.03070968    0.09947292
+##   prc,Southwest prc,North Central prc,Northeast prc,Southeast
+## 1      127.1965          417.4842      869.1004      378.1488
+## 2      288.8544          531.8784      707.5902      453.3773
+## 3      109.8887          101.0366      359.6112      813.7744
+## 4      102.7977          180.9033      321.0029      438.5091
+```
+
+
 ## Climate trajectories
 
 
@@ -186,7 +243,7 @@ ggplot(trace.dat, aes(x = `prc,Southwest`, y =`tmp,Southwest`, color = Year)) +
   theme_minimal()
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-5-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-6-1.png"  />
 
 ```r
 ggplot(trace.dat, aes(x = `prc,Southwest`, y =`tmp,Southwest`, color = Year)) +
@@ -196,7 +253,7 @@ ggplot(trace.dat, aes(x = `prc,Southwest`, y =`tmp,Southwest`, color = Year)) +
   theme_minimal()
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-5-2.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-6-2.png"  />
 
 
 
@@ -261,7 +318,7 @@ levelplot(prc.change.map.percent, margin = F, names.attr = c('Winter', 'Summer')
           at = seq(-100,100,10))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-10-1.png"  />
 
 ```r
 # note in the next plot all values less than -200 have been turned into -200
@@ -271,7 +328,7 @@ levelplot(prc.change.map, margin = F, names.attr = c('Winter', 'Summer'),
           at = seq(-200,200,20))    
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-2.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-10-2.png"  />
 
 ```r
 levelplot(tmp.change.map, margin = F, names.attr = c('Winter', 'Summer'), 
@@ -280,7 +337,7 @@ levelplot(tmp.change.map, margin = F, names.attr = c('Winter', 'Summer'),
           at = seq(-20,20,2))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-9-3.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-10-3.png"  />
 
 Now we can calculate changes in seasonality. For temperature, this is just the standard deviation of all 12 monthly averages. For precipitation, we will use the coefficient of variation.
 
@@ -297,7 +354,7 @@ levelplot(tmp.seasonality, margin = F,
           at = seq(-4, 4, .4))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-11-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-12-1.png"  />
 
 ```r
 levelplot(prc.seasonality, margin = F, 
@@ -306,7 +363,7 @@ levelplot(prc.seasonality, margin = F,
           at = seq(-50, 50, 5))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-11-2.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-12-2.png"  />
 
 What about changes in spatial hetergeneity?
 
@@ -331,7 +388,7 @@ levelplot(tmp.hetero, margin = F, names.attr = c('Winter', 'Summer'),
           par.settings = BuRdTheme(), at = seq(-10, 10, 1))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-12-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-13-1.png"  />
 Same for precipitaiton.
 
 
@@ -349,22 +406,28 @@ prc.hetero.sd <- brick(c(
         focal(w = wts, sd, na.rm = T)))) %>%
   mask(mh.prc[[1]]) # clip buffer added by window
 
+#levelplot(prc.hetero.sd, margin = F, names.attr = c('Winter', 'Summer'), 
+#          main = 'Precipitation heterogeneity (SD in 25km radius) change\n LGM to Mid Holocene',
+#          par.settings = BuRdTheme(), at = seq(-500, 500, 50))
+
+#capped at -75
+prc.hetero.sd[prc.hetero.sd < -75] <- -75
 levelplot(prc.hetero.sd, margin = F, names.attr = c('Winter', 'Summer'), 
           main = 'Precipitation heterogeneity (SD in 25km radius) change\n LGM to Mid Holocene',
-          par.settings = BuRdTheme(), at = seq(-1000, 1000, 100))
+          par.settings = BuRdTheme(), at = seq(-75, 75, 7.5))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-13-1.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-14-1.png"  />
 
 ```r
-#capped at -100
-prc.hetero.sd[prc.hetero.sd < -100] <- -100
+# capped at -60
+prc.hetero.sd[prc.hetero.sd < -60] <- -60
 levelplot(prc.hetero.sd, margin = F, names.attr = c('Winter', 'Summer'), 
           main = 'Precipitation heterogeneity (SD in 25km radius) change\n LGM to Mid Holocene',
-          par.settings = BuRdTheme(), at = seq(-100, 100, 10))
+          par.settings = BuRdTheme(), at = seq(-60, 60, 6))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-13-2.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-14-2.png"  />
 
 
 ```r
@@ -383,14 +446,10 @@ prc.hetero.cv <- brick(c(
         focal(w = wts, cv, na.rm = T)))) %>%
   mask(mh.prc[[1]]) # clip buffer added by window
   
-levelplot(prc.hetero.cv, margin = F, names.attr = c('Winter', 'Summer'), 
-          main = 'Precipitation heterogeneity (CV in 25km radius) change\n LGM to Mid Holocene',
-          par.settings = BuRdTheme(), at = seq(-2.2, 2.2, .22))
-```
+#levelplot(prc.hetero.cv, margin = F, names.attr = c('Winter', 'Summer'), 
+#          main = 'Precipitation heterogeneity (CV in 25km radius) change\n LGM to Mid Holocene',
+#          par.settings = BuRdTheme(), at = seq(-2.2, 2.2, .22))
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-14-1.png"  />
-
-```r
 # now cap at +/- .25
 
 prc.hetero.cv[prc.hetero.cv > .25] <- .25
@@ -400,7 +459,7 @@ levelplot(prc.hetero.cv, margin = F, names.attr = c('Winter', 'Summer'),
           par.settings = BuRdTheme(), at = seq(-.25, .25, .025))
 ```
 
-<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-14-2.png"  />
+<img src="proxymodelcomparison_files/figure-html/unnamed-chunk-15-1.png"  />
 
 <label for="tufte-mn-" class="margin-toggle">&#8853;</label><input type="checkbox" id="tufte-mn-" class="margin-toggle"><span class="marginnote">Compare these with raw gcm outputs to check the added value of SDM</span>
 
