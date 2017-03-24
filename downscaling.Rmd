@@ -1,0 +1,202 @@
+---
+title: 'Supplementary Information: Paleoclimate Modeling'
+author: "Nicolas Gauthier"
+date: 'Last Updated: `r Sys.Date()`'
+link-citations: yes
+mainfont: Times New Roman
+monofont: Ubuntu Mono
+geometry: margin=1in
+fontsize: 12pt
+header-includes:
+- \usepackage{marginnote}
+output:
+  pdf_document:
+    fig_height: 5
+    fig_width: 10
+    highlight: pygments
+    latex_engine: lualatex
+---
+
+```{r}
+library(raster)
+library(magrittr)
+library(dismo)
+library(mgcv)
+```
+
+
+# Data Preprocessing
+
+## Observations
+```{r}
+bbox <- extent(c(-10, 45, 30, 50))
+  
+tmean.obs <- list.files('~/gdrive/Data/MOD11C3v5.0-CHIRPSv2.0_MONTHLY_03m/meantemp', full.names = T) %>% 
+    stack %>%
+    set_names(month.name) %>%
+    crop(bbox)
+
+p.obs <- list.files('~/gdrive/Data/MOD11C3v5.0-CHIRPSv2.0_MONTHLY_03m/precip', full.names = T) %>% 
+    stack %>%
+    set_names(month.name) %>%
+    crop(bbox)
+```
+
+
+## Topographic Variables
+```{r}
+elev <- raster('~/gdrive/Data/SRTM_1km.tif') %>% projectRaster(p.obs) %>% mask(p.obs)
+```
+
+
+```{r}
+dco <- elev %>%
+  reclassify(c(-Inf, Inf, NA, NA, NA, 1)) %>% # reverse NA and non-NA cells
+  distance(doEdge = T) %>% # calculate the distances
+  mask(elev) %>% # mask out ocean cells  
+  divide_by(1000) # convert to km
+```
+
+
+
+## Reanalysis
+Import and preprocess of ECMWF-interim reanalysis data, monthly means of daily means, 1979-2010
+```{r eval = FALSE}
+processECMWF <- function(file, var){
+  brick(paste0('~/gdrive/Data/', file), varname = var) %>% 
+      stackApply(indices = 1:12, fun = mean) %>%
+      rotate %>%
+      set_names(month.name) %>% projectRaster(eu.p) %>% mask(eu.p)
+}
+
+tcw <- processECMWF('ecmwf_surface.nc', 'tcw')
+msl <- processECMWF('ecmwf_surface.nc', 'msl')
+t2m <- processECMWF('ecmwf_surface.nc', 't2m')
+lsp <- processECMWF('ECMWF Precip.nc', 'lsp')
+cp <- processECMWF('ECMWF Precip.nc', 'cp')
+```
+
+```{r, include=FALSE}
+# load preloaded files at first for convience, should change
+msl <- brick('~/gdrive/Data/ECMWF/eu/msl_ecmwf_eu.tif')
+t2m <- brick('~/gdrive/Data/ECMWF/eu/t2m_ecmwf_eu.tif')
+tcw <- brick('~/gdrive/Data/ECMWF/eu/tcw_ecmwf_eu.tif')
+cp <- brick('~/gdrive/Data/ECMWF/eu/cp_ecmwf_eu.tif')
+lsp <- brick('~/gdrive/Data/ECMWF/eu/lsp_ecmwf_eu.tif')
+```
+
+
+Put all the predictor and response variables together, month by month.
+```{r}
+cal.vars <- sapply(1:12, function(x){ 
+  brick(tmean.obs[[x]], p.obs[[x]], msl[[x]], t2m[[x]], tcw[[x]], lsp[[x]], cp[[x]], elev, dco) %>%
+    setNames(c('tmean.obs', 'p.obs', 'msl', 't2m', 'tcw', 'lsp', 'cp','elev','dco'))
+})
+```
+
+Sample the variables at random points, weighting for latitude
+```{r}
+cal.data <- lapply(cal.vars, function(x) (raster::extract(x, randomPoints(elev, 20000)) %>% data.frame)) %>% do.call(rbind, .)
+```
+
+
+# Model Fitting
+
+```{r}
+tmean.gam <- gam(tmean.obs ~ s(t2m, bs = 'cr') +
+             s(msl, bs = 'cr') +
+             s(elev, bs = 'cr'),
+           method = 'REML', data = cal.data)
+
+p.occur.gam <- gam(factor(p.obs >= .1) ~ s(t2m) + s(cp), 
+                   family = binomial, method = 'REML', data = cal.data)
+
+prcp.gam <- bam(p.obs ~ s(msl, bs = 'cr') +
+              s(tcw, bs = 'cr') +
+              s(lsp, bs = 'cr') +
+              s(cp, bs = 'cr') +
+              s(elev, bs = 'cr') +
+              s(dco, bs = 'cr'),
+            family = Gamma(link = 'log'), method = 'REML', 
+            data = cal.data[cal.data$p.obs >= .1, ])
+```
+
+
+
+
+# Predictions
+## Ensemble Generation
+Write a function to import, process, and generate a monthly average enemble.
+```{r}
+getEns <- function(period, variable){
+  var.dir <- paste0('~/gdrive/Data/PMIP3 Data/', period, '/', variable)
+  files.in <- list.files(var.dir, full.names = T)
+  
+  sapply(files.in, function(x){
+    brick(x) %>% rotate %>% projectRaster(elev)
+  }) %>% brick %>% stackApply(indices = 1:12, fun = mean)
+}
+```
+
+### Mid Holocene
+Use this function to import all the necessary variables. Generate a single prediction set
+```{r}
+t2m <- getEns('MH', 'tas')
+msl <- getEns('MH', 'psl')
+cp <- getEns('MH', 'prc' ) %>% multiply_by(86.4) 
+lsp <- (getEns('MH', 'pr') %>% multiply_by(86.4))  - cp 
+tcw <- getEns('MH', 'clivi') + getEns('MH', 'clwvi') + getEns('MH', 'prw')
+
+pred.vars.mh <- sapply(1:12, function(x){
+  brick(t2m[[x]], msl[[x]], tcw[[x]], cp[[x]], lsp[[x]], elev, dco) %>%
+    setNames(c('t2m', 'msl', 'tcw', 'cp', 'lsp', 'elev', 'dco'))
+}) 
+```
+
+Make predictions for the Mid Holocene.
+```{r}
+tmean.mh <- sapply(1:12, function(x){
+    predict(pred.vars.mh[[x]], tmeann.gam)
+  }) %>% brick
+  
+prec.occur.mh <- sapply(1:12, function(x){
+    predict(pred.vars.mh[[x]], p.occur.gam, type = 'response')
+  }) %>% brick %>% is_weakly_greater_than(.5)
+  
+prec.mh <- sapply(1:12, function(x){
+    predict(pred.vars.mh[[x]], prcp.gam, type = 'response')
+  }) %>% brick %>% mask(prec.occur.mh, maskvalue = 0, updatevalue = 0)
+```
+
+### LGM
+Repeat for the LGM
+```{r}
+t2m <- getEns('LGM', 'tas')
+msl <- getEns('LGM', 'psl')
+cp <- getEns('LGM', 'prc' ) %>% multiply_by(86.4) 
+lsp <- (getEns('LGM', 'pr') %>% multiply_by(86.4))  - cp 
+tcw <- getEns('LGM', 'clivi') + getEns('LGM', 'clwvi') + getEns('LGM', 'prw')
+
+pred.vars.lgm <- sapply(1:12, function(x){
+  brick(t2m[[x]], msl[[x]], tcw[[x]], cp[[x]], lsp[[x]], elev, dco) %>%
+    setNames(c('t2m', 'msl', 'tcw', 'cp', 'lsp', 'elev', 'dco'))
+}) 
+```
+
+```{r}
+tmean.lgm <- sapply(1:12, function(x){
+    predict(pred.vars.lgm[[x]], tmean.gam)
+  }) %>% brick
+  
+prec.occur.lgm <- sapply(1:12, function(x){
+    predict(pred.vars.lgm[[x]], p.occur.gam, type = 'response')
+  }) %>% brick %>% is_weakly_greater_than(.5)
+  
+prec.lgm <- sapply(1:12, function(x){
+    predict(pred.vars.lgm[[x]], prcp.gam, type = 'response')
+  }) %>% brick %>% mask(prec.occur.lgm, maskvalue = 0, updatevalue = 0)
+```
+
+
+
+
