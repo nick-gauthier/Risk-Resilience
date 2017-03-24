@@ -22,3 +22,6 @@ fields
 locfit
 EMD
 ggmap
+dismo
+nlme
+mgcv
