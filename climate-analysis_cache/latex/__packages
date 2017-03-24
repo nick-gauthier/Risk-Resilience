@@ -1,5 +1,4 @@
 base
-tufte
 ncdf4
 sp
 rgdal
@@ -21,7 +20,7 @@ maps
 fields
 locfit
 EMD
-ggmap
 dismo
 nlme
 mgcv
+ggmap
