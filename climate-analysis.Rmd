@@ -1,10 +1,12 @@
 ---
-title: 'Supplementary Information: Paleoclimate Modeling'
-author: "Nicolas Gauthier"
+title: "SUPPLEMENTARY INFORMATION S3"
+subtitle: '**Risk and Resilience in the Late Glacial: a Case Study from the Western
+  Mediterranean**'
+author: C Michael Barton, J Emili Aura Tortosa, Oreto Garcia Puchol, Julien G Riel-Salvatore, Nicolas Gauthier, Margarita Vadillo Conesa, & Geneviève Pothier-Bouchard
 date: 'Last Updated: `r Sys.Date()`'
 link-citations: yes
 mainfont: Times New Roman
-monofont: Ubuntu Mono
+monofont: Monaco
 geometry: margin=1in
 fontsize: 12pt
 header-includes:
@@ -15,10 +17,25 @@ output:
     fig_width: 10
     highlight: pygments
     latex_engine: lualatex
+    toc: yes
+  word_document:
+    toc: yes
+    toc_depth: '3'
+  html_document:
+    theme: spacelab
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
 ---
 
+
 # Introduction
-In this two-part analysis we first compare temporal patterns of temperature and precipitation, derived from a transient paleoclimate simulation, at three points in the west Mediterranean. Then we analyze the spatial pattern of climate change from the LGM to the Mid Holocene using an ensemble of downscaled equilibrium paleoclimate simulations.
+This R Markdown script includes the workflow for all paleoclimate model analyses used in the paper entitled Risk and Resilience in the Late Glacial: a Case Study from the Western Mediterranean (Michael Barton corresponding author), published in Quaternary Science Reviews.
+
+In this two-part analysis we first compare temporal patterns of temperature and precipitation, derived from a transient paleoclimate simulation, at three points in the west Mediterranean. Then we analyze the spatial pattern of climate change from the LGM to the Mid Holocene using an ensemble of downscaled equilibrium time-slice paleoclimate simulations.
+
+This R Markdown script requires raster data of [observed present-day temperature and precipitation](https://vdeblauwe.wordpress.com/download/), [large scale atmospheric reanalysis data for the present day](http://apps.ecmwf.int/datasets/data/interim-full-daily/levtype=sfc/), [TraCE-21k simulation outputs](www.cgd.ucar.edu/ccr/TraCE/), and an [ensemble of monthly atmospheric climatologies from the PMIP3 modeling project](https://esgf-node.llnl.gov/projects/esgf-llnl/). More information on these datasets can be found in the supplementary information document S1, and each can be downloaded by following the links above.
+
 
 ## Setup
 Load all the packages needed for this analysis. 
@@ -227,7 +244,7 @@ dco <- elev %>%
   divide_by(1000) # convert to km
 ```
 
-Import and preprocess of ECMWF-interim reanalysis data, monthly means of daily means, 1979-2010
+Import and preprocess of ERA-interim (ECMWF) reanalysis data, monthly means of daily means, 1979-2010.
 ```{r eval = FALSE}
 processECMWF <- function(file, var){
   brick(paste0('~/gdrive/Data/', file), varname = var) %>% 
@@ -384,12 +401,6 @@ bySeason <- function(x, season, var){
   if(var == 'prc') return(sum(x[[ids]]))
 }
 
-prc.change.map <- brick(c(
-  bySeason(mh.prc, 'djf', 'prc') - bySeason(lgm.prc, 'djf', 'prc'),
-  bySeason(mh.prc, 'jja', 'prc') - bySeason(lgm.prc, 'jja', 'prc')))
-prc.change.map[prc.change.map < -200] <- -200 # so the plot isn't washed out by large precip values
-
-
 prc.change.map.percent <- brick(c(
   (bySeason(mh.prc, 'djf', 'prc') - bySeason(lgm.prc, 'djf', 'prc')) * 100 / bySeason(lgm.prc, 'djf', 'prc'), 
   (bySeason(mh.prc, 'jja', 'prc') - bySeason(lgm.prc, 'jja', 'prc')) * 100 / bySeason(lgm.prc, 'jja', 'prc')))
@@ -399,18 +410,12 @@ tmp.change.map <- brick(c(
   bySeason(mh.tmp, 'jja', 'tmp') - bySeason(lgm.tmp, 'jja', 'tmp')))
 ```
 
-Plot the results
+Plot the results.
 ```{r}
 levelplot(prc.change.map.percent, margin = F, names.attr = c('Winter', 'Summer'),
           main = 'Precipitation Change (%)\n LGM to Mid Holocene',
           par.settings = PuOrTheme(), 
           at = seq(-100,100,10))
-
-# note in the next plot all values less than -200 have been turned into -200
-levelplot(prc.change.map, margin = F, names.attr = c('Winter', 'Summer'), 
-          main = 'Precipitation Change (mm) \n LGM to Mid Holocene',
-          par.settings = PuOrTheme(), 
-          at = seq(-200,200,20))    
 
 levelplot(tmp.change.map, margin = F, names.attr = c('Winter', 'Summer'), 
           main = 'Temperature Change (°C)\n LGM to Mid Holocene',
@@ -437,7 +442,7 @@ levelplot(prc.seasonality, margin = F,
           at = seq(-50, 50, 5))
 ```
 
-What about changes in spatial hetergeneity? First define a 5x5 weights matrix within which to sample the climate maps
+What about changes in spatial hetergeneity? Define a 5x5 weights matrix within which to sample the standard deviation of the climate maps.
 ```{r}
 wts <- matrix(c(0,0,1,0,0,0,1,1,1,0,1,1,1,1,1,0,1,1,1,0,0,0,1,0,0), nrow = 5)
 ```
