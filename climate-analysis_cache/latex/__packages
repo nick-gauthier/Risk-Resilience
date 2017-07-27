@@ -24,3 +24,5 @@ dismo
 nlme
 mgcv
 ggmap
+dotCall64
+bindrcpp

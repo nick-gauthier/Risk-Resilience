@@ -2,9 +2,10 @@
 title: "SUPPLEMENTARY INFORMATION S3"
 subtitle: '**Risk and Resilience in the Late Glacial: a Case Study from the Western
   Mediterranean**'
-author: C Michael Barton, J Emili Aura Tortosa, Oreto Garcia Puchol, Julien G Riel-Salvatore, Nicolas Gauthier, Margarita Vadillo Conesa, & Geneviève Pothier-Bouchard
+author: C Michael Barton, J Emili Aura Tortosa, Oreto Garcia-Puchol, Julien G Riel-Salvatore, Nicolas Gauthier, Margarita Vadillo Conesa, & Geneviève Pothier-Bouchard
 date: 'Last Updated: `r Sys.Date()`'
 link-citations: yes
+urlcolor: blue
 mainfont: Times New Roman
 monofont: Monaco
 geometry: margin=1in
@@ -28,14 +29,30 @@ output:
     toc_float: yes
 ---
 
-
 # Introduction
-This R Markdown script includes the workflow for all paleoclimate model analyses used in the paper entitled Risk and Resilience in the Late Glacial: a Case Study from the Western Mediterranean (Michael Barton corresponding author), published in Quaternary Science Reviews.
+This R Markdown script includes the workflow for all paleoclimate model analyses used in the paper *Risk and Resilience in the Late Glacial: A Case Study from the Western Mediterranean* (Michael Barton corresponding author), published in Quaternary Science Reviews.
 
 In this two-part analysis we first compare temporal patterns of temperature and precipitation, derived from a transient paleoclimate simulation, at three points in the west Mediterranean. Then we analyze the spatial pattern of climate change from the LGM to the Mid Holocene using an ensemble of downscaled equilibrium time-slice paleoclimate simulations.
 
-This R Markdown script requires raster data of [observed present-day temperature and precipitation](https://vdeblauwe.wordpress.com/download/), [large scale atmospheric reanalysis data for the present day](http://apps.ecmwf.int/datasets/data/interim-full-daily/levtype=sfc/), [TraCE-21k simulation outputs](www.cgd.ucar.edu/ccr/TraCE/), and an [ensemble of monthly atmospheric climatologies from the PMIP3 modeling project](https://esgf-node.llnl.gov/projects/esgf-llnl/). More information on these datasets can be found in the supplementary information document S1, and each can be downloaded by following the links above.
+## Data sources
+This R Markdown script requires raster data of [observed present-day temperature and precipitation](https://vdeblauwe.wordpress.com/download/), [large scale atmospheric reanalysis data for the present day](http://apps.ecmwf.int/datasets/data/interim-full-daily/levtype=sfc/), [TraCE-21k simulation outputs](https://www.earthsystemgrid.org/dataset/ucar.cgd.ccsm3.trace.atm.proc.annual_ave.html), and an [ensemble of monthly atmospheric climatologies from the PMIP3 modeling project](https://esgf-node.llnl.gov/projects/esgf-llnl/). More information on these datasets can be found in the references below, and each can be downloaded by following the links above. The code in the following sections begins with these raw data files and details all preprocessing and analysis steps, but in the interest of reproducibility we include .RDS files of the preprocessed data so that the analysis can proceed if the raw data are unavailable.
 
+**Present-day high resolution observed data (MODIS and CHIRPS derived products)**
+Deblauwe V., Droissart V., Bose R., Sonké B., Blach-Overgaard A., Svenning J-C, Wieringa J. J., Ramesh B. R., Stévart T. & Couvreur T. L. P. 2016. *Remotely sensed temperature and precipitation data improve species distribution modeling in the tropics*. Global Ecology and Biogeography. 25(4): 443-454
+
+
+**Present-day coarse resolution reanalysis data (ERA-Interim reanalysis data, monthly means of daily means and daily forecast accumulations, 1979-2010)**
+Dee, D. P., Uppala, S. M., Simmons, A. J., Berrisford, P., Poli, P., Kobayashi, S., Andrae, U., Balmaseda, M. A., Balsamo, G., Bauer, P., Bechtold, P., Beljaars, A. C. M., van de Berg, L., Bidlot, J., Bormann, N., Delsol, C., Dragani, R., Fuentes, M., Geer, A. J., Haimberger, L., Healy, S. B., Hersbach, H., Hólm, E. V., Isaksen, L., Kållberg, P., Köhler, M., Matricardi, M., McNally, A. P., Monge-Sanz, B. M., Morcrette, J.-J., Park, B.-K., Peubey, C., de Rosnay, P., Tavolato, C., Thépaut, J.-N. and Vitart, F. 2011. *The ERA-Interim reanalysis: configuration and performance of the data assimilation system*. Q.J.R. Meteorol. Soc., 137: 553–597.
+
+
+**Transient paleoclimate model output (TraCE21k decadal averages)** 
+He, Feng. *Simulating Transient Climate Evolution of the Last deglaciation with CCSM3*. PhD diss., University of Wisconsin-Madison, 2010.
+
+
+**Time-slice paleoclimate model outputs (PMIP3 monthly climatologies)**
+Search query: Project: PMIP3 | Model: BCC-CSM1.1, CCSM4, CNRM-CM5, GISS-E2-R, IPSL-CM5A-LR, MIROC-ESM, MRI-CGCM3 | Time frequency: monClim | Experiment: LGM and midHolocene | Realm: atmos 
+
+Braconnot P, Harrison S P, Kageyama M, Bartlein P J, Masson-Delmotte V, Abe-Ouchi A, Otto-Bliesner B and Zhao Y. 2012. *Evaluation of climate models using palaeoclimatic data*. Nat. Clim. Change 2: 417–24
 
 ## Setup
 Load all the packages needed for this analysis. 
@@ -71,6 +88,10 @@ get_map(location = c(left = -10, bottom = 35, right = 20, top = 50),
   ggmap + labs(x = 'Longitude', y = 'Latitude') + geom_point(data = samp.pts, aes(x = V1, y = V2), size = 3, color = 'red')
 ```
 
+```{r setup, include=FALSE}
+# Set so that long lines in R will be wrapped:
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=75),tidy=TRUE)
+```
 ## TraCE-21k Import and Preprocessing
 
 First, import data from the TraCE-21k paleoclimate simulation. Then extract temperature and precipitation values at three locations in the west Mediterranean. Use the *brick* function from **raster** to import decadal averages from the simulation. Put the coordinates for the three locations in a matrix, and use that matrix to and **raster's** *extract* function to get the values from the climate model brick. Convert the precipitation values to mm/year and temperature values to degrees Celsius. Finally, name the columns for each region appropriately. 
@@ -89,7 +110,8 @@ brick('trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
 
 Now pull all the TraCE data into one data frame, with one row per year, and one column per variable/location combination. First *rbind* the two sets of TraCE data and *transpose* the results, turning the 6 rows into 6 columns. Add a column for the Year (in ka BP), and use to select only the entries earlier than 6,000 BP.
 
-```{r}
+```{r eval = F}
+# Preprocessing of raw data, skip if using included .RDS file
 trace.dat <- rbind(
   brick('trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
     raster::extract(samp.pts) %>% 
@@ -104,11 +126,18 @@ trace.dat <- rbind(
   rownames_to_column('Year') %>%
   mutate(Year = as.numeric(substring(Year, 3))) %>%
   filter(Year > 6) # get all the decades up to 6ka BP
+
+saveRDS(trace.dat, 'trace_data_points.rds')
+```
+
+```{r}
+trace.dat <- readRDS('trace_data_points.rds')
 ```
 
 ## Trend Analysis
 
-Let's use the **EMD** package to calculate actual trend lines using the empirical mode decomposition approach.
+Let's use the **EMD** package to calculate trend lines using the empirical mode decomposition approach.
+
 ```{r, echo=FALSE, fig.cap="Empirical mode decomposition example", fig.height = 10, message=F, cache = F}
 emd.test <- emd(trace.dat[,2])
 
@@ -120,22 +149,22 @@ for(i in 1:emd.test$nimf) {
 }
 ```
 
-Now organize the temperature and precipitation data to make plotting easier using functions from **tidyr**.
+Now organize the temperature and precipitation data to make plotting easier using functions from **tidyr**, along with **EMD** for the trends.
 ```{r cache = F}
 trace.plot <- trace.dat %>% 
   gather(key, value, - Year) %>%
   separate(key, c('Variable', 'Region'), ',') %>%
   mutate(Region = factor(Region, levels = c('Southwest', 'North Central', 
                                             'Northeast', 'Southeast')),
-         Variable = ifelse(
-    Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
+         Variable = ifelse(Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
 
 emd.res <- function(x) emd(x, boundary = 'wave')$residue
 trace.emd <- trace.dat %>%
   mutate_at(vars(-Year), emd.res) %>%
   gather(key, value, - Year) %>%
   separate(key, c('Variable', 'Region'), ',') %>%
-  mutate(Region = factor(Region, levels = c('Southwest', 'North Central', 'Northeast', 'Southeast')),
+  mutate(Region = factor(Region, levels = c('Southwest', 'North Central', 
+                                            'Northeast', 'Southeast')),
          Variable = ifelse(
     Variable == 'tmp', 'Temperature (°C)', 'Precipitation (mm)'))
 ```
@@ -158,7 +187,7 @@ ggplot(data = trace.plot, aes(x = Year, y = value)) +
 
 ## Variance
 Calculate the detrended variances.
-```{r fig.fullwidth = T}
+```{r fig.fullwidth = T, warning = F}
 emd.dat <- trace.dat %>%
   mutate_at(vars(-Year), emd.res)
 
@@ -172,10 +201,14 @@ emd.dat <- trace.dat %>%
     print(width = Inf)
 ```
 
-How do these compare to the overall regional variance?
+How do these compare to the overall regional variance? First define our region of interest.
 ```{r}
 bbox <- extent(c(-10, 20, 35, 47))
+```
 
+Repeat the above process for regional averages.
+```{r eval = F}
+# Preprocessing of raw data, skip if using included .RDS file
 trace.reg.avg <- rbind(
   brick('trace.01-36.22000BP.cam2.TREFHT.22000BP_decavg_400BCE.nc') %>%
     raster::extract(bbox, fun = mean) %>% 
@@ -189,7 +222,13 @@ trace.reg.avg <- rbind(
   rownames_to_column('Year') %>%
   mutate(Year = as.numeric(substring(Year, 3))) %>%
   filter(Year > 6) 
+saveRDS(trace.reg.avg, 'trace_data_regional.rds')
+```
+```{r}
+trace.reg.avg <- readRDS('trace_data_regional.rds')
+```
 
+```{r warning = F}
 emd.reg.avg <- trace.reg.avg %>%
   mutate_at(vars(-Year), emd.res)
 
@@ -214,43 +253,68 @@ emd.reg.avg <- trace.reg.avg %>%
 
 ## Data Preprocessing
 
-First change the study area to all of Europe and the Mediterranean. Import observed precipitation and temperature normals.
+First change the study area to all of Europe and the Mediterranean.
 ```{r}
 bbox <- extent(c(-10, 45, 30, 50))
-  
-tmean.obs <- list.files('~/gdrive/Data/MOD11C3v5.0-CHIRPSv2.0_MONTHLY_03m/meantemp', full.names = T) %>% 
+```
+
+Import observed precipitation and temperature normals.
+```{r eval = F}
+# Preprocessing of raw data, skip if using included .RDS files
+tmean.obs <- list.files('MOD11C3v5.0-CHIRPSv2.0_MONTHLY_03m/meantemp', full.names = T) %>% 
     stack %>%
     set_names(month.name) %>%
     crop(bbox)
 tmean.obs[tmean.obs == -9999] <- NA
 
-p.obs <- list.files('~/gdrive/Data/MOD11C3v5.0-CHIRPSv2.0_MONTHLY_03m/precip', full.names = T) %>% 
+p.obs <- list.files('MOD11C3v5.0-CHIRPSv2.0_MONTHLY_03m/precip', full.names = T) %>% 
     stack %>%
     set_names(month.name) %>%
     crop(bbox)
 p.obs[p.obs == -9999] <- NA
+
+saveRDS(tmean.obs, 'tmean_obs.rds')
+saveRDS(p.obs, 'prec_obs.rds')
+```
+
+```{r}
+tmean.obs <- readRDS('tmean_obs.rds')
+p.obs <- readRDS('prec_obs.rds')
 ```
 
 Import and reproject SRTM DEM.
-```{r}
-elev <- raster('~/gdrive/Data/SRTM_1km.tif') %>% projectRaster(p.obs[[1]]) %>% mask(p.obs[[1]])
+```{r eval = F}
+# Preprocessing of raw data, skip if using included .RDS files
+elev <- raster('SRTM_1km.tif') %>% 
+  projectRaster(p.obs[[1]]) %>% 
+  mask(p.obs[[1]])
+
+saveRDS(elev, 'elev.rds')
 ```
+
+```{r}
+elev <- readRDS('elev.rds')
+```
+
 Use the DEM to calculate a diffusive continentality (DCO) map, with distance to the sea in km.
 ```{r cache = T}
 dco <- elev %>%
   reclassify(c(-Inf, Inf, NA, NA, NA, 1)) %>% # reverse NA and non-NA cells
-  distance(doEdge = T) %>% # calculate the distances
+  distance(doEdge = T) %>% # calculate distances
   mask(elev) %>% # mask out ocean cells  
   divide_by(1000) # convert to km
 ```
 
 Import and preprocess of ERA-interim (ECMWF) reanalysis data, monthly means of daily means, 1979-2010.
 ```{r eval = FALSE}
+# Preprocessing of raw data, skip if using included .RDS files
 processECMWF <- function(file, var){
-  brick(paste0('~/gdrive/Data/', file), varname = var) %>% 
-      stackApply(indices = 1:12, fun = mean) %>%
-      rotate %>%
-      set_names(month.name) %>% projectRaster(eu.p) %>% mask(eu.p)
+  brick(file, varname = var) %>%
+    stackApply(indices = 1:12, fun = mean) %>%
+    rotate %>%
+    set_names(month.name) %>% 
+    projectRaster(p.obs[[1]]) %>% 
+    mask(p.obs[[1]])
 }
 
 tcw <- processECMWF('ecmwf_surface.nc', 'tcw')
@@ -258,19 +322,24 @@ msl <- processECMWF('ecmwf_surface.nc', 'msl')
 t2m <- processECMWF('ecmwf_surface.nc', 't2m')
 lsp <- processECMWF('ECMWF Precip.nc', 'lsp')
 cp <- processECMWF('ECMWF Precip.nc', 'cp')
+
+saveRDS(tcw, 'tcw_reanalysis.rds')
+saveRDS(msl, 'msl_reanalysis.rds')
+saveRDS(t2m, 't2m_reanalysis.rds')
+saveRDS(lsp, 'lsp_reanalysis.rds')
+saveRDS(cp, 'cp_reanalysis.rds')
 ```
 
-```{r, include=FALSE}
-# load preloaded files at first for convience, should change
-msl <- brick('~/gdrive/Data/ECMWF/eu/msl_ecmwf_eu.tif')
-t2m <- brick('~/gdrive/Data/ECMWF/eu/t2m_ecmwf_eu.tif')
-tcw <- brick('~/gdrive/Data/ECMWF/eu/tcw_ecmwf_eu.tif')
-cp <- brick('~/gdrive/Data/ECMWF/eu/cp_ecmwf_eu.tif')
-lsp <- brick('~/gdrive/Data/ECMWF/eu/lsp_ecmwf_eu.tif')
+```{r}
+tcw <- readRDS('tcw_reanalysis.rds')
+msl <- readRDS('msl_reanalysis.rds')
+t2m <- readRDS('t2m_reanalysis.rds')
+lsp <- readRDS('lsp_reanalysis.rds')
+cp <- readRDS('cp_reanalysis.rds')
 ```
 
 Put all the predictor and response variables together, month by month.
-```{r cache = T}
+```{r}
 cal.vars <- sapply(1:12, function(x){ 
   brick(tmean.obs[[x]], p.obs[[x]], msl[[x]], t2m[[x]], tcw[[x]], lsp[[x]], cp[[x]], elev, dco) %>%
     setNames(c('tmean.obs', 'p.obs', 'msl', 't2m', 'tcw', 'lsp', 'cp','elev','dco'))
@@ -306,10 +375,10 @@ prcp.gam <- bam(p.obs ~ s(msl, bs = 'cr') +
 ```
 
 ## Predictions
-Write a function to import, process, and generate a monthly average ensemble from PMIP3 data.
-```{r}
+Write a function to import, process, and generate a monthly average ensemble from PMIP3 data. This function assumes the PMIP3 data are organized with a "PMIP3 Data > Period > Variable > Model" directory structure.
+```{r eval = F}
 getEns <- function(period, variable){
-  var.dir <- paste0('~/gdrive/Data/PMIP3 Data/', period, '/', variable)
+  var.dir <- paste0('PMIP3 Data/', period, '/', variable)
   files.in <- list.files(var.dir, full.names = T)
   
   sapply(files.in, function(x){
@@ -319,22 +388,41 @@ getEns <- function(period, variable){
 ```
 
 ### Mid Holocene
-Use this function to import all the necessary variables. Generate a single prediction set.
-```{r warning=F}
+Use this function to import all the necessary variables.
+```{r warning=F, eval = F}
+# Preprocessing of raw data, skip if using included .RDS files
 t2m <- getEns('MH', 'tas')
 msl <- getEns('MH', 'psl')
 cp <- getEns('MH', 'prc' ) %>% multiply_by(86.4) 
 lsp <- (getEns('MH', 'pr') %>% multiply_by(86.4))  - cp 
 tcw <- getEns('MH', 'clivi') + getEns('MH', 'clwvi') + getEns('MH', 'prw')
 
+saveRDS(t2m, 't2m_mh.rds')
+saveRDS(msl, 'msl_mh.rds')
+saveRDS(cp, 'cp_mh.rds')
+saveRDS(lsp, 'lsp_mh.rds')
+saveRDS(tcw, 'tcw_mh.rds')
+```
+
+```{r}
+t2m <- readRDS('t2m_mh.rds')
+msl <- readRDS('msl_mh.rds')
+cp <- readRDS('cp_mh.rds')
+lsp <- readRDS('lsp_mh.rds')
+tcw <- readRDS('tcw_mh.rds')
+```
+
+Generate a single prediction variable set.
+```{r}
 pred.vars.mh <- sapply(1:12, function(x){
-  brick(t2m[[x]], msl[[x]], tcw[[x]], cp[[x]], lsp[[x]], elev, dco) %>%
+  brick(t2m[[x]], msl[[x]], tcw[[x]], cp[[x]], lsp[[x]], 
+        crop(elev, t2m), crop(dco,t2m)) %>%
     setNames(c('t2m', 'msl', 'tcw', 'cp', 'lsp', 'elev', 'dco'))
 }) 
 ```
 
 Make predictions for the Mid Holocene.
-```{r cache = T}
+```{r}
 tmean.mh <- sapply(1:12, function(x){
     predict(pred.vars.mh[[x]], tmean.gam)
   }) %>% brick
@@ -350,20 +438,38 @@ prec.mh <- sapply(1:12, function(x){
 
 ### LGM
 Repeat for the LGM
-```{r warning=F}
+```{r warning=F, eval = F}
+# Preprocessing of raw data, skip if using included .RDS files
 t2m <- getEns('LGM', 'tas')
 msl <- getEns('LGM', 'psl')
 cp <- getEns('LGM', 'prc' ) %>% multiply_by(86.4) 
 lsp <- (getEns('LGM', 'pr') %>% multiply_by(86.4))  - cp 
 tcw <- getEns('LGM', 'clivi') + getEns('LGM', 'clwvi') + getEns('LGM', 'prw')
 
+saveRDS(t2m, 't2m_lgm.rds')
+saveRDS(msl, 'msl_lgm.rds')
+saveRDS(cp, 'cp_lgm.rds')
+saveRDS(lsp, 'lsp_lgm.rds')
+saveRDS(tcw, 'tcw_lgm.rds')
+```
+
+```{r}
+t2m <- readRDS('t2m_lgm.rds')
+msl <- readRDS('msl_lgm.rds')
+cp <- readRDS('cp_lgm.rds')
+lsp <- readRDS('lsp_lgm.rds')
+tcw <- readRDS('tcw_lgm.rds')
+```
+
+```{r}
 pred.vars.lgm <- sapply(1:12, function(x){
-  brick(t2m[[x]], msl[[x]], tcw[[x]], cp[[x]], lsp[[x]], elev, dco) %>%
+  brick(t2m[[x]], msl[[x]], tcw[[x]], cp[[x]], lsp[[x]], 
+        crop(elev, t2m), crop(dco,t2m)) %>%
     setNames(c('t2m', 'msl', 'tcw', 'cp', 'lsp', 'elev', 'dco'))
 }) 
 ```
 
-```{r}
+```{r cache = T}
 tmean.lgm <- sapply(1:12, function(x){
     predict(pred.vars.lgm[[x]], tmean.gam)
   }) %>% brick

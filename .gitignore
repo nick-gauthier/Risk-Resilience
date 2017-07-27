@@ -18,3 +18,7 @@ trace*
 packrat/src/
 Downscaled
 climate-analysis_cache/*
+
+*.rds
+
+*.gz
